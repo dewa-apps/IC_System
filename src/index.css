@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  @apply bg-[#F4F5F7] text-[#172B4D] font-sans;
+}
+
+.kanban-column {
+  @apply bg-[#EBECF0] rounded-lg p-3 flex flex-col gap-3 min-h-[500px] w-full;
+}
+
+.task-card {
+  @apply rounded shadow-sm p-3 transition-all cursor-pointer;
+}
+
+.priority-urgent { @apply text-red-600 bg-red-50; }
+.priority-high { @apply text-orange-600 bg-orange-50; }
+.priority-medium { @apply text-blue-600 bg-blue-50; }
+.priority-low { @apply text-green-600 bg-green-50; }

@@ -1,0 +1,5 @@
+{
+  "name": "IC Task Manager",
+  "description": "A professional Kanban-style task management application inspired by Jira, featuring project tracking, task prioritization, and real-time status updates.",
+  "requestFramePermissions": []
+}

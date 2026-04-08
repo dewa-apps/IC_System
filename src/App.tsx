@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from './apiInterceptor';
+import { auth } from './firebase';
 import { 
   Layout, 
+  CheckSquare,
   Plus, 
   Search, 
   MoreHorizontal, 
@@ -21,12 +24,22 @@ import {
   Hash,
   Edit2,
   Paperclip,
-  File,
   Download,
   Upload,
   FileText,
   List as ListIcon,
-  Table as TableIcon
+  Menu,
+  Link as LinkIcon,
+  ChevronLeft,
+  ChevronRight,
+  Settings,
+  BarChart3,
+  Layers,
+  Filter,
+  Sun,
+  Moon,
+  History,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -37,7 +50,6 @@ import {
   useSensor, 
   useSensors,
   DragOverlay,
-  defaultDropAnimationSideEffects,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
@@ -51,7 +63,9 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser } from './types';
+import ReportsView from './components/ReportsView';
+import SettingsView from './components/SettingsView';
 
 const STATUS_COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'TODO', label: 'To Do' },
@@ -98,6 +112,29 @@ const getInitials = (name: string) => {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
+const Logo = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg" 
+    className={className}
+  >
+    <rect width="24" height="24" rx="4" fill="currentColor" />
+    <text 
+      x="50%" 
+      y="50%" 
+      dominantBaseline="middle" 
+      textAnchor="middle" 
+      fill="white" 
+      fontSize="10" 
+      fontWeight="bold" 
+      fontFamily="sans-serif"
+    >
+      IC
+    </text>
+  </svg>
+);
+
 interface SortableTaskProps {
   task: Task;
   onClick: (task?: Task) => void;
@@ -138,39 +175,61 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
       style={style}
       className={`task-card group relative border ${
         isOverdue 
-          ? 'border-red-200 bg-red-50 hover:border-red-400' 
-          : 'bg-white border-transparent hover:border-blue-500'
+          ? 'border-[var(--danger-color)] border-opacity-30 bg-[var(--danger-color)] bg-opacity-10 hover:border-[var(--danger-color)]' 
+          : 'hover:border-[var(--accent-color)]'
       }`}
       onClick={() => onClick(task)}
     >
       <div 
         {...attributes} 
         {...listeners}
-        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded transition-all"
+        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-1 hover:bg-[var(--bg-secondary)] rounded transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        <GripVertical className="w-4 h-4 text-gray-400" />
+        <GripVertical className="w-4 h-4 text-[var(--text-muted)]" />
       </div>
       
-      <p className="text-sm text-[#172B4D] mb-1 leading-tight font-medium pr-6">
+      <p className="text-sm text-[var(--text-primary)] mb-1 leading-tight font-medium pr-6">
         {task.title}
       </p>
       {task.description && (
         <p 
-          className="text-[11px] text-[#5E6C84] mb-3 line-clamp-2 leading-normal"
+          className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2 leading-normal"
           title={task.description}
         >
           {task.description}
         </p>
       )}
+
+      {task.subtasks && task.subtasks.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1">
+              <CheckSquare className="w-3 h-3 text-[var(--text-muted)]" />
+              <span className="text-[10px] font-medium text-[var(--text-muted)]">
+                {task.subtasks.filter(st => st.completed).length}/{task.subtasks.length}
+              </span>
+            </div>
+            <span className="text-[10px] font-medium text-[var(--text-muted)]">
+              {Math.round((task.subtasks.filter(st => st.completed).length / task.subtasks.length) * 100)}%
+            </span>
+          </div>
+          <div className="w-full h-1 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-[var(--accent-color)] transition-all duration-300"
+              style={{ width: `${(task.subtasks.filter(st => st.completed).length / task.subtasks.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1 mb-3">
         {task.category && (
-          <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">
+          <span className="text-[10px] px-1.5 py-0.5 badge-accent rounded font-medium">
             {task.category}
           </span>
         )}
         {task.brand && (
-          <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded font-medium">
+          <span className="text-[10px] px-1.5 py-0.5 badge-purple rounded font-medium">
             {task.brand}
           </span>
         )}
@@ -178,27 +237,41 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {getPriorityIcon(task.priority)}
-          <span className="text-[10px] font-bold text-[#5E6C84]">IC-{task.id}</span>
+          <span className="text-[10px] font-bold text-[var(--text-muted)]">{task.display_id || `IC-${task.id}`}</span>
         </div>
         <div className="flex items-center gap-3">
           {task.due_date && (
-            <div className={`flex items-center gap-1 text-[10px] font-medium ${isOverdue ? 'text-red-600' : 'text-[#5E6C84]'}`}>
+            <div className={`flex items-center gap-1 text-[10px] font-medium ${isOverdue ? 'text-[var(--danger-color)]' : 'text-[var(--text-muted)]'}`}>
               <Clock className="w-3 h-3" />
-              {new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+              {new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })}
             </div>
           )}
-          {task.assignee && (
-            <div 
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm" 
-              title={task.assignee}
-              style={{ 
-                backgroundColor: getAvatarColor(task.assignee).bg,
-                color: getAvatarColor(task.assignee).text
-              }}
-            >
-              {getInitials(task.assignee)}
-            </div>
-          )}
+          <div className="flex items-center -space-x-1">
+            {task.authorName && (
+              <div 
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm border border-[var(--bg-surface)] z-10" 
+                title={`Created by: ${task.authorName}`}
+                style={{ 
+                  backgroundColor: getAvatarColor(task.authorName).bg,
+                  color: getAvatarColor(task.authorName).text
+                }}
+              >
+                {getInitials(task.authorName)}
+              </div>
+            )}
+            {task.assignee && (
+              <div 
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm border border-[var(--bg-surface)] z-20" 
+                title={`Assignee: ${task.assignee}`}
+                style={{ 
+                  backgroundColor: getAvatarColor(task.assignee).bg,
+                  color: getAvatarColor(task.assignee).text
+                }}
+              >
+                {getInitials(task.assignee)}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -245,7 +318,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
           <div className="flex items-center gap-2 flex-1">
             <input
               autoFocus
-              className="text-xs font-bold text-[#172B4D] uppercase tracking-wider bg-white border border-blue-500 rounded px-1 py-0.5 w-full outline-none"
+              className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider bg-[var(--bg-surface)] border border-[var(--accent-color)] rounded px-1 py-0.5 w-full outline-none"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               onBlur={handleRename}
@@ -253,16 +326,16 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
             />
           </div>
         ) : (
-          <h2 className="text-xs font-bold text-[#5E6C84] uppercase tracking-wider flex items-center gap-2">
+          <h2 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
             {label} 
-            <span className="bg-[#DFE1E6] px-2 py-0.5 rounded-full text-[10px] text-[#42526E]">{tasks.length}</span>
+            <span className="bg-[var(--border-color)] px-2 py-0.5 rounded-full text-[10px] text-[var(--text-secondary)]">{tasks.length}</span>
           </h2>
         )}
         
         <div className="relative">
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className={`p-1 rounded transition-colors ${isMenuOpen ? 'bg-[#EBECF0] text-[#172B4D]' : 'text-[#5E6C84] hover:bg-[#EBECF0]'}`}
+            className={`p-1 rounded transition-colors ${isMenuOpen ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -273,8 +346,8 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
                 className="fixed inset-0 z-20" 
                 onClick={() => setIsMenuOpen(false)}
               />
-              <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-xl border border-[#DFE1E6] z-30 py-1 overflow-hidden">
-                <div className="px-3 py-1.5 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider border-b border-[#DFE1E6] mb-1">
+              <div className="absolute right-0 mt-1 w-48 bg-[var(--bg-surface)] rounded-md shadow-xl border border-[var(--border-color)] z-30 py-1 overflow-hidden">
+                <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] mb-1">
                   Column Actions
                 </div>
                 <button 
@@ -282,41 +355,41 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
                     setIsRenaming(true);
                     setIsMenuOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#172B4D] hover:bg-[#F4F5F7] flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
                 >
-                  <Edit2 className="w-3.5 h-3.5 text-[#5E6C84]" />
+                  <Edit2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   Rename Column
                 </button>
                 
-                <div className="px-3 py-1.5 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider border-y border-[#DFE1E6] my-1">
+                <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-y border-[var(--border-color)] my-1">
                   Sort Tasks By
                 </div>
                 <button 
                   onClick={() => { onSortTasks(id, 'DUE_DATE'); setIsMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#172B4D] hover:bg-[#F4F5F7] flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
                 >
-                  <CalendarDays className="w-3.5 h-3.5 text-[#5E6C84]" />
+                  <CalendarDays className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   Due Date
                 </button>
                 <button 
                   onClick={() => { onSortTasks(id, 'PRIORITY'); setIsMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#172B4D] hover:bg-[#F4F5F7] flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
                 >
-                  <AlertCircle className="w-3.5 h-3.5 text-[#5E6C84]" />
+                  <AlertCircle className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   Priority
                 </button>
                 <button 
                   onClick={() => { onSortTasks(id, 'CATEGORY'); setIsMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#172B4D] hover:bg-[#F4F5F7] flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
                 >
-                  <Tag className="w-3.5 h-3.5 text-[#5E6C84]" />
+                  <Tag className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   Category
                 </button>
                 <button 
                   onClick={() => { onSortTasks(id, 'NEWEST_ID'); setIsMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#172B4D] hover:bg-[#F4F5F7] flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
                 >
-                  <Hash className="w-3.5 h-3.5 text-[#5E6C84]" />
+                  <Hash className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   Newest ID
                 </button>
               </div>
@@ -327,7 +400,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
       
       <div 
         ref={setNodeRef}
-        className={`kanban-column flex-1 overflow-y-auto transition-colors scrollbar-thin scrollbar-thumb-gray-300 ${isOver ? 'bg-[#E2E4E9]' : ''}`}
+        className={`kanban-column flex-1 overflow-y-auto transition-colors scrollbar-thin scrollbar-thumb-theme ${isOver ? 'bg-[var(--bg-secondary-hover)]' : ''}`}
       >
         <SortableContext 
           id={id}
@@ -351,7 +424,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
         {hasMore && (
           <button 
             onClick={() => setDisplayLimit(prev => prev + 20)}
-            className="w-full py-2 mt-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded border border-dashed border-blue-200 transition-colors"
+            className="w-full py-2 mt-2 text-xs font-bold text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded border border-dashed border-[var(--accent-color)] border-opacity-30 transition-colors"
           >
             Show {Math.min(20, tasks.length - displayLimit)} more... ({tasks.length - displayLimit} remaining)
           </button>
@@ -359,7 +432,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
         
         <button 
           onClick={() => onAddTask(id)}
-          className="flex items-center gap-2 text-sm text-[#42526E] hover:bg-[#DFE1E6] p-2 rounded transition-colors mt-2 shrink-0"
+          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] p-2 rounded transition-colors mt-2 shrink-0"
         >
           <Plus className="w-4 h-4" />
           Create issue
@@ -373,21 +446,82 @@ interface TaskListViewProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
+  currentPage: number;
+  totalPages: number;
+  rowsPerPage: number;
+  onPageChange: (page: number) => void;
+  onRowsPerPageChange: (rows: number) => void;
+  sortField: string;
+  sortOrder: 'asc' | 'desc';
+  onSort: (field: string) => void;
 }
 
-function TaskListView({ tasks, onTaskClick, getPriorityIcon }: TaskListViewProps) {
+function TaskListView({ 
+  tasks, 
+  onTaskClick, 
+  getPriorityIcon,
+  currentPage,
+  totalPages,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
+  sortField,
+  sortOrder,
+  onSort
+}: TaskListViewProps) {
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return <ArrowUpAZ className="w-3 h-3 opacity-20" />;
+    return sortOrder === 'asc' ? <ArrowUpAZ className="w-3 h-3" /> : <ArrowUpAZ className="w-3 h-3 rotate-180" />;
+  };
+
   return (
-    <div className="bg-white border border-[#DFE1E6] rounded-lg overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col h-full transition-colors duration-200">
+      <div className="overflow-x-auto flex-1">
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead>
-            <tr className="bg-[#F4F5F7] border-b border-[#DFE1E6]">
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider w-24">Key</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider">Summary</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider w-32">Status</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider w-32">Priority</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider w-40">Assignee</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[#5E6C84] uppercase tracking-wider w-32">Due Date</th>
+            <tr className="bg-[var(--bg-primary)] border-b border-[var(--border-color)]">
+              <th 
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-24 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                onClick={() => onSort('id')}
+              >
+                <div className="flex items-center gap-1">
+                  Key <SortIcon field="id" />
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                onClick={() => onSort('title')}
+              >
+                <div className="flex items-center gap-1">
+                  Summary <SortIcon field="title" />
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                onClick={() => onSort('status')}
+              >
+                <div className="flex items-center gap-1">
+                  Status <SortIcon field="status" />
+                </div>
+              </th>
+              <th 
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                onClick={() => onSort('priority')}
+              >
+                <div className="flex items-center gap-1">
+                  Priority <SortIcon field="priority" />
+                </div>
+              </th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-40">Assignee</th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-40">Created By</th>
+              <th 
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                onClick={() => onSort('due_date')}
+              >
+                <div className="flex items-center gap-1">
+                  Due Date <SortIcon field="due_date" />
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -400,27 +534,27 @@ function TaskListView({ tasks, onTaskClick, getPriorityIcon }: TaskListViewProps
               return (
                 <tr 
                   key={task.id} 
-                  className={`border-b border-[#DFE1E6] hover:bg-[#F4F5F7] cursor-pointer transition-colors ${isOverdue ? 'bg-red-50/30' : ''}`}
+                  className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors ${isOverdue ? 'bg-[var(--danger-color)] bg-opacity-5' : ''}`}
                   onClick={() => onTaskClick(task)}
                 >
-                  <td className="px-4 py-3 text-xs font-bold text-[#5E6C84]">IC-{task.id}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-[var(--accent-color)] hover:underline">{task.display_id || `IC-${task.id}`}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium text-[#172B4D]">{task.title}</span>
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{task.title}</span>
                       {task.category && (
-                        <span className="text-[10px] text-blue-600 font-medium">{task.category}</span>
+                        <span className="text-[10px] text-[var(--badge-accent-text)] font-medium">{task.category}</span>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-[10px] px-2 py-1 bg-[#EBECF0] text-[#42526E] rounded font-bold uppercase whitespace-nowrap">
+                    <span className="text-[10px] px-2 py-1 bg-[var(--border-color)] text-[var(--text-secondary)] rounded font-bold uppercase whitespace-nowrap">
                       {task.status.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {getPriorityIcon(task.priority)}
-                      <span className="text-xs text-[#42526E]">{task.priority}</span>
+                      <span className="text-xs text-[var(--text-secondary)]">{task.priority}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -435,20 +569,38 @@ function TaskListView({ tasks, onTaskClick, getPriorityIcon }: TaskListViewProps
                         >
                           {getInitials(task.assignee)}
                         </div>
-                        <span className="text-xs text-[#42526E] truncate">{task.assignee}</span>
+                        <span className="text-xs text-[var(--text-secondary)] truncate">{task.assignee}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-[#5E6C84] italic">Unassigned</span>
+                      <span className="text-xs text-[var(--text-muted)] italic">Unassigned</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {task.authorName ? (
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                          style={{ 
+                            backgroundColor: getAvatarColor(task.authorName).bg,
+                            color: getAvatarColor(task.authorName).text
+                          }}
+                        >
+                          {getInitials(task.authorName)}
+                        </div>
+                        <span className="text-xs text-[var(--text-secondary)] truncate">{task.authorName}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)] italic">Unknown</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {task.due_date ? (
-                      <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-red-600 font-bold' : 'text-[#42526E]'}`}>
+                      <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-[var(--danger-color)] font-bold' : 'text-[var(--text-secondary)]'}`}>
                         {isOverdue && <Clock className="w-3 h-3" />}
-                        {new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                        {new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })}
                       </div>
                     ) : (
-                      <span className="text-xs text-[#5E6C84]">-</span>
+                      <span className="text-xs text-[var(--text-muted)]">-</span>
                     )}
                   </td>
                 </tr>
@@ -457,16 +609,97 @@ function TaskListView({ tasks, onTaskClick, getPriorityIcon }: TaskListViewProps
           </tbody>
         </table>
       </div>
-      {tasks.length === 0 && (
-        <div className="p-12 text-center text-[#5E6C84] italic bg-white">
+      
+      {tasks.length === 0 ? (
+        <div className="p-12 text-center text-[var(--text-muted)] italic bg-[var(--bg-surface)]">
           No tasks found matching your criteria.
+        </div>
+      ) : (
+        <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)]">Show</span>
+              <select 
+                value={rowsPerPage}
+                onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
+                className="text-xs border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+              >
+                {[10, 20, 50, 100].map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+              <span className="text-xs text-[var(--text-muted)]">per page</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              disabled={currentPage === 1}
+              onClick={() => onPageChange(currentPage - 1)}
+              className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => onPageChange(page)}
+                  className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${currentPage === page ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)]'}`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+            <button 
+              disabled={currentPage === totalPages}
+              onClick={() => onPageChange(currentPage + 1)}
+              className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+interface SidebarItemProps {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  collapsed: boolean;
+  visible: boolean;
+  onClick?: () => void;
+}
+
+function SidebarItem({ icon, label, active, collapsed, visible, onClick }: SidebarItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 p-2.5 rounded-md transition-all group relative ${
+        active 
+          ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium' 
+          : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
+      }`}
+    >
+      <div className="shrink-0">{icon}</div>
+      {!collapsed && <span className="text-sm truncate">{label}</span>}
+      {collapsed && visible && (
+        <div className="fixed left-16 ml-2 px-2 py-1 bg-[var(--bg-sidebar)] text-[var(--text-sidebar)] text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-[1000] shadow-xl pointer-events-none border border-[var(--border-color)]">
+          {label}
+        </div>
+      )}
+    </button>
+  );
+}
+
 export default function App() {
+  const currentUser = auth.currentUser;
+  const currentUserName = currentUser?.displayName || currentUser?.email || 'Unknown User';
+  const currentUserPhoto = currentUser?.photoURL;
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<{ id: TaskStatus; label: string }[]>([
     { id: 'TODO', label: 'To Do' },
@@ -477,6 +710,13 @@ export default function App() {
   ]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [showTemplateSave, setShowTemplateSave] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | number | ''>('');
+  const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
+  const [showTemplateDeleteConfirm, setShowTemplateDeleteConfirm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
@@ -484,12 +724,64 @@ export default function App() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentContent, setEditingCommentContent] = useState('');
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [metadataOptions, setMetadataOptions] = useState({
+    categories: [] as string[],
+    brands: [] as string[],
+    requestors: [] as string[],
+    divisions: [] as string[]
+  });
   const [isUploading, setIsUploading] = useState(false);
+  const [isDeletingAttachment, setIsDeletingAttachment] = useState<string | number | null>(null);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isDeletingTaskInProgress, setIsDeletingTaskInProgress] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [taskLinks, setTaskLinks] = useState<TaskLink[]>([]);
+  const [isLinkingTask, setIsLinkingTask] = useState(false);
+  const [isRemovingLink, setIsRemovingLink] = useState<number | null>(null);
+  const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  const [selectedLinkType, setSelectedLinkType] = useState<LinkType>('relates_to');
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+  const [currentView, setCurrentView] = useState<'tasks' | 'reports' | 'settings'>('tasks');
+  const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  // Pagination, Sort, Filter states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedStatuses, setSelectedStatuses] = useState<TaskStatus[]>([]);
+  const [selectedPriorities, setSelectedPriorities] = useState<TaskPriority[]>([]);
+  const [sortField, setSortField] = useState<string>('id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -504,6 +796,15 @@ export default function App() {
     })
   );
 
+  const getJakartaToday = () => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  };
+
   // Form state
   const [formData, setFormData] = useState({
     title: '',
@@ -511,21 +812,213 @@ export default function App() {
     status: 'TODO' as TaskStatus,
     priority: 'MEDIUM' as TaskPriority,
     assignee: '',
-    request_date: new Date().toISOString().split('T')[0],
+    request_date: getJakartaToday(),
     due_date: '',
     category: '',
     brand: '',
     requestor: '',
-    division: ''
+    division: '',
+    subtasks: [] as SubTask[]
   });
 
+  const getUpdatedStatus = (subtasks: SubTask[], currentStatus: TaskStatus): TaskStatus => {
+    if (!subtasks || subtasks.length === 0) return currentStatus;
+    
+    const allCompleted = subtasks.every(st => st.completed);
+    const anyCompleted = subtasks.some(st => st.completed);
+    
+    if (allCompleted) return 'REVIEW';
+    if (anyCompleted) return 'IN_PROGRESS';
+    
+    if (currentStatus === 'DONE' || currentStatus === 'IN_PROGRESS' || currentStatus === 'REVIEW') {
+      return 'TODO';
+    }
+    
+    return currentStatus;
+  };
+
+  const addSubTask = () => {
+    const newSubTask: SubTask = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: '',
+      completed: false,
+      due_date: ''
+    };
+    setFormData(prev => {
+      const newSubtasks = [...(prev.subtasks || []), newSubTask];
+      return {
+        ...prev,
+        subtasks: newSubtasks,
+        status: getUpdatedStatus(newSubtasks, prev.status)
+      };
+    });
+  };
+
+  const toggleSubTask = (id: string) => {
+    setFormData(prev => {
+      const newSubtasks = prev.subtasks?.map(st => 
+        st.id === id ? { ...st, completed: !st.completed } : st
+      ) || [];
+      return {
+        ...prev,
+        subtasks: newSubtasks,
+        status: getUpdatedStatus(newSubtasks, prev.status)
+      };
+    });
+  };
+
+  const updateSubTaskTitle = (id: string, title: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subtasks: prev.subtasks?.map(st => 
+        st.id === id ? { ...st, title } : st
+      )
+    }));
+  };
+
+  const updateSubTaskDueDate = (id: string, due_date: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subtasks: prev.subtasks?.map(st => 
+        st.id === id ? { ...st, due_date } : st
+      )
+    }));
+  };
+
+  const deleteSubTask = (id: string) => {
+    setFormData(prev => {
+      const newSubtasks = prev.subtasks?.filter(st => st.id !== id) || [];
+      return {
+        ...prev,
+        subtasks: newSubtasks,
+        status: getUpdatedStatus(newSubtasks, prev.status)
+      };
+    });
+  };
+
   useEffect(() => {
+    fetchUsers();
     fetchTasks();
-  }, []);
+    fetchTemplates();
+    fetchMetadataOptions();
+  }, [currentUser]);
+
+  const formatDateTime = (dateStr: string | undefined) => {
+    if (!dateStr) return '';
+    // SQLite CURRENT_TIMESTAMP is YYYY-MM-DD HH:MM:SS (UTC)
+    // Append Z if it's a date-time string without timezone to treat as UTC
+    const normalized = dateStr.includes(' ') ? dateStr.replace(' ', 'T') + 'Z' : 
+                      (dateStr.includes('T') && !dateStr.endsWith('Z') ? dateStr + 'Z' : dateStr);
+    return new Date(normalized).toLocaleString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta'
+    });
+  };
+
+  const fetchTaskLinks = async (taskId: string | number) => {
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}/links`);
+      const data = await res.json();
+      setTaskLinks(data);
+    } catch (err) {
+      console.error('Failed to fetch task links:', err);
+    }
+  };
+
+  const handleAddLink = async (targetTaskId: string | number) => {
+    if (!editingTask) return;
+    setIsLinkingTask(true);
+    try {
+      const res = await apiFetch('/api/task-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_task_id: editingTask.id,
+          target_task_id: targetTaskId,
+          link_type: selectedLinkType,
+          user: currentUserName
+        })
+      });
+      if (res.ok) {
+        fetchTaskLinks(editingTask.id);
+        setLinkSearchQuery('');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to link task');
+      }
+    } catch (err) {
+      console.error('Failed to link task:', err);
+    } finally {
+      setIsLinkingTask(false);
+    }
+  };
+
+  const handleRemoveLink = async (linkId: number) => {
+    if (!editingTask) return;
+    setIsRemovingLink(linkId);
+    try {
+      await apiFetch(`/api/task-links/${linkId}?user=${encodeURIComponent(currentUserName)}`, {
+        method: 'DELETE'
+      });
+      fetchTaskLinks(editingTask.id);
+    } catch (err) {
+      console.error('Failed to remove link:', err);
+    } finally {
+      setIsRemovingLink(null);
+    }
+  };
+
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
+
+  const fetchUsers = async () => {
+    try {
+      const res = await apiFetch('/api/users');
+      const data = await res.json();
+      setUsers(data);
+      
+      if (currentUser) {
+        const me = data.find((u: AppUser) => u.email === currentUser.email);
+        if (me) {
+          setCurrentUserRole(me.role);
+          setIsAccessDenied(false);
+        } else {
+          // Check if we are the very first user (bootstrapping admin)
+          if (data.length === 0 && currentUser.email === 'dewangga@sirclo.com') {
+            const syncRes = await apiFetch('/api/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: currentUserName,
+                email: currentUser.email,
+                role: 'admin'
+              })
+            });
+            if (syncRes.ok) {
+              const newUser = await syncRes.json();
+              setUsers(prev => {
+                if (prev.some(u => u.id === newUser.id)) return prev;
+                return [...prev, newUser];
+              });
+              setCurrentUserRole(newUser.role);
+              setIsAccessDenied(false);
+            }
+          } else {
+            setIsAccessDenied(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+    }
+  };
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks');
+      const res = await apiFetch('/api/tasks');
       const data = await res.json();
       setTasks(data);
     } catch (err) {
@@ -535,13 +1028,103 @@ export default function App() {
     }
   };
 
+  const fetchMetadataOptions = async () => {
+    try {
+      const res = await apiFetch('/api/metadata/dropdowns');
+      const data = await res.json();
+      setMetadataOptions({
+        categories: data.categories || [],
+        brands: data.brands || [],
+        requestors: data.requestors || [],
+        divisions: data.divisions || []
+      });
+    } catch (err) {
+      console.error('Failed to fetch metadata options:', err);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await apiFetch('/api/templates');
+      const data = await res.json();
+      setTemplates(data);
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) return;
+    setIsSavingTemplate(true);
+    try {
+      const res = await apiFetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateName,
+          description: formData.description,
+          category: formData.category,
+          brand: formData.brand,
+          priority: formData.priority,
+          subtasks: formData.subtasks.map(st => ({ title: st.title }))
+        })
+      });
+      if (res.ok) {
+        setTemplateName('');
+        setShowTemplateSave(false);
+        fetchTemplates();
+      }
+    } catch (err) {
+      console.error('Failed to save template:', err);
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleApplyTemplate = (template: Template) => {
+    setSelectedTemplateId(template.id);
+    setFormData(prev => ({
+      ...prev,
+      description: template.description || prev.description,
+      category: template.category || prev.category,
+      brand: template.brand || prev.brand,
+      priority: template.priority || prev.priority,
+      subtasks: template.subtasks.map(st => ({
+        id: Math.random().toString(36).substr(2, 9),
+        title: st.title,
+        completed: false,
+        due_date: ''
+      }))
+    }));
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplateId) return;
+    setIsDeletingTemplate(true);
+    try {
+      const res = await apiFetch(`/api/templates/${selectedTemplateId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setSelectedTemplateId('');
+        setShowTemplateDeleteConfirm(false);
+        fetchTemplates();
+      }
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+    } finally {
+      setIsDeletingTemplate(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingTask(true);
     try {
       const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
       const method = editingTask ? 'PATCH' : 'POST';
       
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -554,7 +1137,7 @@ export default function App() {
           for (const file of pendingFiles) {
             const uploadData = new FormData();
             uploadData.append('file', file);
-            await fetch(`/api/tasks/${newTask.id}/attachments`, {
+            await apiFetch(`/api/tasks/${newTask.id}/attachments`, {
               method: 'POST',
               body: uploadData
             });
@@ -565,12 +1148,15 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to save task:', err);
+    } finally {
+      setIsSavingTask(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string | number) => {
+    setIsDeletingTaskInProgress(true);
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
       if (res.ok) {
         await fetchTasks();
         closeModal();
@@ -582,6 +1168,7 @@ export default function App() {
       console.error('Failed to delete task:', err);
     } finally {
       setIsDeletingTask(false);
+      setIsDeletingTaskInProgress(false);
     }
   };
 
@@ -594,15 +1181,18 @@ export default function App() {
         status: task.status,
         priority: task.priority,
         assignee: task.assignee || '',
-        request_date: task.request_date || new Date().toISOString().split('T')[0],
+        request_date: task.request_date || getJakartaToday(),
         due_date: task.due_date || '',
         category: task.category || '',
         brand: task.brand || '',
         requestor: task.requestor || '',
-        division: task.division || ''
+        division: task.division || '',
+        subtasks: task.subtasks || []
       });
       fetchComments(task.id);
       fetchAttachments(task.id);
+      fetchActivities(task.id);
+      fetchTaskLinks(task.id);
     } else {
       setEditingTask(null);
       setFormData({
@@ -611,25 +1201,38 @@ export default function App() {
         status: 'TODO',
         priority: 'MEDIUM',
         assignee: '',
-        request_date: new Date().toISOString().split('T')[0],
+        request_date: getJakartaToday(),
         due_date: '',
         category: '',
         brand: '',
         requestor: '',
-        division: ''
+        division: '',
+        subtasks: []
       });
       setComments([]);
     }
     setIsModalOpen(true);
+    setSelectedTemplateId('');
+    setShowTemplateDeleteConfirm(false);
   };
 
-  const fetchComments = async (taskId: number) => {
+  const fetchComments = async (taskId: string | number) => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}/comments`);
+      const res = await apiFetch(`/api/tasks/${taskId}/comments`);
       const data = await res.json();
       setComments(data);
     } catch (err) {
       console.error('Failed to fetch comments:', err);
+    }
+  };
+
+  const fetchActivities = async (taskId: string | number) => {
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}/activities`);
+      const data = await res.json();
+      setActivities(data);
+    } catch (err) {
+      console.error('Failed to fetch activities:', err);
     }
   };
 
@@ -639,11 +1242,11 @@ export default function App() {
 
     setIsSubmittingComment(true);
     try {
-      const res = await fetch(`/api/tasks/${editingTask.id}/comments`, {
+      const res = await apiFetch(`/api/tasks/${editingTask.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          author: 'John Doe', // In a real app, this would be the logged-in user
+          author: currentUserName,
           content: newComment
         })
       });
@@ -651,6 +1254,7 @@ export default function App() {
       if (res.ok) {
         setNewComment('');
         fetchComments(editingTask.id);
+        fetchActivities(editingTask.id);
       }
     } catch (err) {
       console.error('Failed to add comment:', err);
@@ -659,21 +1263,50 @@ export default function App() {
     }
   };
 
-  const handleDeleteComment = async (commentId: number) => {
-    if (!confirm('Delete this comment?')) return;
+  const handleDeleteComment = async (commentId: string | number) => {
+    setIsDeletingComment(true);
     try {
-      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/comments/${commentId}`, { method: 'DELETE' });
       if (res.ok && editingTask) {
+        setCommentToDelete(null);
         fetchComments(editingTask.id);
+        fetchActivities(editingTask.id);
       }
     } catch (err) {
       console.error('Failed to delete comment:', err);
+    } finally {
+      setIsDeletingComment(false);
     }
   };
 
-  const fetchAttachments = async (taskId: number) => {
+  const handleUpdateComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCommentId || !editingCommentContent.trim() || !editingTask) return;
+
+    setIsUpdatingComment(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/attachments`);
+      const res = await apiFetch(`/api/comments/${editingCommentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editingCommentContent })
+      });
+
+      if (res.ok) {
+        setEditingCommentId(null);
+        setEditingCommentContent('');
+        fetchComments(editingTask.id);
+        fetchActivities(editingTask.id);
+      }
+    } catch (err) {
+      console.error('Failed to update comment:', err);
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
+
+  const fetchAttachments = async (taskId: string | number) => {
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}/attachments`);
       const data = await res.json();
       setAttachments(data);
     } catch (err) {
@@ -696,7 +1329,7 @@ export default function App() {
         const formData = new FormData();
         formData.append('file', files[i]);
         
-        const res = await fetch(`/api/tasks/${editingTask.id}/attachments`, {
+        const res = await apiFetch(`/api/tasks/${editingTask.id}/attachments`, {
           method: 'POST',
           body: formData
         });
@@ -704,6 +1337,7 @@ export default function App() {
         if (!res.ok) throw new Error('Upload failed');
       }
       fetchAttachments(editingTask.id);
+      fetchActivities(editingTask.id);
     } catch (err) {
       console.error('Failed to upload file:', err);
       alert('Failed to upload one or more files.');
@@ -714,18 +1348,26 @@ export default function App() {
   };
 
   const handleDownload = (attachment: Attachment) => {
-    window.open(`/api/attachments/${attachment.id}/download`, '_blank');
+    if (attachment.url) {
+      window.open(attachment.url, '_blank');
+    } else {
+      window.open(`/api/attachments/${attachment.id}/download`, '_blank');
+    }
   };
 
-  const handleDeleteAttachment = async (id: number) => {
+  const handleDeleteAttachment = async (id: string | number) => {
     if (!window.confirm('Delete this attachment?')) return;
+    setIsDeletingAttachment(id);
     try {
-      const res = await fetch(`/api/attachments/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
       if (res.ok && editingTask) {
         fetchAttachments(editingTask.id);
+        fetchActivities(editingTask.id);
       }
     } catch (err) {
       console.error('Failed to delete attachment:', err);
+    } finally {
+      setIsDeletingAttachment(null);
     }
   };
 
@@ -764,9 +1406,9 @@ export default function App() {
     setPendingFiles([]);
   };
 
-  const syncTaskStatus = useCallback(async (id: number, newStatus: TaskStatus) => {
+  const syncTaskStatus = useCallback(async (id: string | number, newStatus: TaskStatus) => {
     try {
-      const res = await fetch(`/api/tasks/${id}`, {
+      const res = await apiFetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -775,6 +1417,8 @@ export default function App() {
       if (!res.ok) {
         // Rollback on failure
         fetchTasks();
+      } else if (editingTask?.id === id) {
+        fetchActivities(id);
       }
     } catch (err) {
       console.error('Failed to sync status:', err);
@@ -828,6 +1472,10 @@ export default function App() {
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
+    
+    // Capture original status before clearing activeTask
+    const originalStatus = activeTask?.status;
+    
     setActiveTask(null);
 
     if (!over) return;
@@ -835,7 +1483,14 @@ export default function App() {
     const activeId = active.id;
     const overId = over.id;
 
+    // Determine the intended new status from the drop target synchronously
     let finalStatus: TaskStatus | null = null;
+    if (STATUS_COLUMNS.some(c => c.id === overId)) {
+      finalStatus = overId as TaskStatus;
+    } else {
+      const overTask = tasks.find(t => t.id === overId);
+      if (overTask) finalStatus = overTask.status;
+    }
 
     setTasks((prev) => {
       const activeIndex = prev.findIndex((t) => t.id === activeId);
@@ -843,13 +1498,12 @@ export default function App() {
 
       if (activeIndex === -1) return prev;
 
-      const activeTask = prev[activeIndex];
-      finalStatus = activeTask.status;
+      const currentTask = prev[activeIndex];
 
       // Reordering within the same column
       if (overIndex !== -1 && activeId !== overId) {
         const overTask = prev[overIndex];
-        if (activeTask.status === overTask.status) {
+        if (currentTask.status === overTask.status) {
           return arrayMove(prev, activeIndex, overIndex);
         }
       }
@@ -858,25 +1512,16 @@ export default function App() {
     });
 
     // Sync with server if status changed
-    // We need to know the original status. We can get it from the 'tasks' state 
-    // which was captured when handleDragEnd was created for this render.
-    const originalTask = tasks.find(t => t.id === activeId);
-    
-    // Determine the intended new status from the drop target
-    let intendedStatus: TaskStatus | null = null;
-    if (STATUS_COLUMNS.some(c => c.id === overId)) {
-      intendedStatus = overId as TaskStatus;
-    } else {
-      const overTask = tasks.find(t => t.id === overId);
-      if (overTask) intendedStatus = overTask.status;
+    if (originalStatus && finalStatus && originalStatus !== finalStatus) {
+      await syncTaskStatus(activeId as string, finalStatus);
     }
-
-    if (originalTask && intendedStatus && originalTask.status !== intendedStatus) {
-      await syncTaskStatus(Number(activeId), intendedStatus);
-    }
-  }, [tasks, syncTaskStatus]);
+  }, [activeTask, tasks, syncTaskStatus]);
 
   const uniqueAssignees = Array.from(new Set(tasks.map(t => t.assignee).filter(Boolean))) as string[];
+  const uniqueCategories = metadataOptions.categories;
+  const uniqueBrands = metadataOptions.brands;
+  const uniqueRequestors = metadataOptions.requestors;
+  const uniqueDivisions = metadataOptions.divisions;
 
   const filteredTasks = tasks.filter(t => {
     const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -887,9 +1532,30 @@ export default function App() {
       t.category?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesAssignee = selectedAssignees.length === 0 || (t.assignee && selectedAssignees.includes(t.assignee));
+    const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
+    const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority);
     
-    return matchesSearch && matchesAssignee;
+    return matchesSearch && matchesAssignee && matchesStatus && matchesPriority;
+  }).sort((a, b) => {
+    let comparison = 0;
+    if (sortField === 'id') {
+      comparison = a.id - b.id;
+    } else if (sortField === 'title') {
+      comparison = a.title.localeCompare(b.title);
+    } else if (sortField === 'status') {
+      comparison = a.status.localeCompare(b.status);
+    } else if (sortField === 'priority') {
+      comparison = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
+    } else if (sortField === 'due_date') {
+      const dateA = a.due_date ? new Date(a.due_date).getTime() : 0;
+      const dateB = b.due_date ? new Date(b.due_date).getTime() : 0;
+      comparison = dateA - dateB;
+    }
+    return sortOrder === 'asc' ? comparison : -comparison;
   });
+
+  const totalPages = Math.ceil(filteredTasks.length / rowsPerPage);
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   const toggleAssigneeFilter = (assignee: string) => {
     setSelectedAssignees(prev => 
@@ -931,125 +1597,328 @@ export default function App() {
 
   const getPriorityIcon = (priority: TaskPriority) => {
     switch (priority) {
-      case 'URGENT': return <AlertCircle className="w-4 h-4 text-red-600" />;
-      case 'HIGH': return <AlertCircle className="w-4 h-4 text-orange-600" />;
-      case 'MEDIUM': return <Circle className="w-4 h-4 text-blue-600" />;
-      case 'LOW': return <Circle className="w-4 h-4 text-green-600" />;
+      case 'URGENT': return <AlertCircle className="w-4 h-4 text-[var(--danger-color)]" />;
+      case 'HIGH': return <AlertCircle className="w-4 h-4 text-[var(--warning-color)]" />;
+      case 'MEDIUM': return <Circle className="w-4 h-4 text-[var(--accent-color)]" />;
+      case 'LOW': return <Circle className="w-4 h-4 text-[var(--success-color)]" />;
     }
   };
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#F4F5F7]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="h-screen w-full flex items-center justify-center bg-[var(--bg-body)] transition-colors duration-200">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-color)]" />
+      </div>
+    );
+  }
+
+  if (isAccessDenied) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-body)] flex items-center justify-center p-4 transition-colors duration-200">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-8 max-w-md w-full text-center shadow-lg">
+          <div className="w-16 h-16 bg-[var(--danger-color)] bg-opacity-10 text-[var(--danger-color)] rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Access Denied</h1>
+          <p className="text-[var(--text-secondary)] mb-6">
+            Your account ({currentUser?.email}) is not registered in this application. Please contact the administrator to request access.
+          </p>
+          <button
+            onClick={() => auth.signOut()}
+            className="px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] rounded font-medium transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b border-[#DFE1E6] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <div className="bg-blue-600 p-1.5 rounded">
-            <Layout className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-xl font-bold text-[#172B4D]">IC System</h1>
-          <nav className="ml-8 hidden lg:flex items-center gap-6 text-sm font-medium text-[#42526E]">
-            <button 
-              onClick={() => setViewMode('board')}
-              className={`pb-4 -mb-4 transition-colors ${viewMode === 'board' ? 'text-blue-600 border-b-2 border-blue-600' : 'hover:text-blue-600'}`}
-            >
-              Board
-            </button>
-            <button 
-              onClick={() => setViewMode('list')}
-              className={`pb-4 -mb-4 transition-colors ${viewMode === 'list' ? 'text-blue-600 border-b-2 border-blue-600' : 'hover:text-blue-600'}`}
-            >
-              List
-            </button>
-            <a href="#" className="hover:text-blue-600 transition-colors">Backlog</a>
-            <a href="#" className="hover:text-blue-600 transition-colors">Reports</a>
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* View Toggle (Mobile/Small screens) */}
-          <div className="flex lg:hidden items-center bg-[#F4F5F7] p-1 rounded-md border border-[#DFE1E6]">
-            <button 
-              onClick={() => setViewMode('board')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'board' ? 'bg-white shadow-sm text-blue-600' : 'text-[#5E6C84]'}`}
-              title="Board View"
-            >
-              <Layout className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-[#5E6C84]'}`}
-              title="List View"
-            >
-              <ListIcon className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center -space-x-2 mr-2">
-            {uniqueAssignees.map((assignee) => {
-              const colors = getAvatarColor(assignee);
-              const isSelected = selectedAssignees.includes(assignee);
-              return (
-                <button
-                  key={assignee}
-                  onClick={() => toggleAssigneeFilter(assignee)}
-                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
-                    isSelected
-                      ? 'ring-2 ring-blue-400 scale-110 z-10 border-white'
-                      : 'border-white hover:scale-105'
-                  }`}
-                  title={assignee}
-                  style={{ 
-                    backgroundColor: colors.bg,
-                    color: colors.text
-                  }}
-                >
-                  {getInitials(assignee)}
-                </button>
-              );
-            })}
-            {selectedAssignees.length > 0 && (
-              <button 
-                onClick={() => setSelectedAssignees([])}
-                className="ml-4 text-xs text-blue-600 hover:underline font-medium"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#42526E]" />
-            <input 
-              type="text" 
-              placeholder="Search tasks..."
-              className="pl-10 pr-4 py-2 bg-[#F4F5F7] border border-[#DFE1E6] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <button 
-            onClick={() => openModal()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Create
-          </button>
-          <div 
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm"
-            style={{ backgroundColor: getAvatarColor('John Doe').bg, color: getAvatarColor('John Doe').text }}
-          >
-            {getInitials('John Doe')}
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200">
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isSidebarVisible && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+            onClick={() => setIsSidebarVisible(false)}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 overflow-x-auto">
+      {/* Sidebar */}
+      <aside 
+        className={`bg-[var(--bg-sidebar)] text-[var(--text-sidebar)] transition-all duration-300 flex flex-col fixed lg:sticky top-0 h-screen z-30 shrink-0 border-r border-[var(--border-color)] ${
+          isSidebarVisible 
+            ? (isSidebarCollapsed ? 'w-16' : 'w-64') 
+            : 'w-0 opacity-0 pointer-events-none'
+        } ${isSidebarVisible ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        {/* Toggle Button - Desktop (Moved outside inner container to avoid overflow-hidden) */}
+        <button 
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          className={`hidden lg:flex absolute -right-3 top-[36px] -translate-y-1/2 w-6 h-6 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-full items-center justify-center text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] shadow-md z-[100] transition-all duration-300 ${!isSidebarVisible ? 'invisible opacity-0' : 'visible opacity-100'}`}
+        >
+          {isSidebarCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
+
+        <div className={`${isSidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col h-full transition-all duration-300 relative overflow-hidden`}>
+          <div className="p-4 flex items-center border-b border-[var(--border-color)] h-[73px] shrink-0 relative">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="bg-[var(--bg-surface)] p-1 rounded shrink-0 border border-[var(--border-color)]">
+                <Logo className="w-5 h-5 text-[var(--accent-color)]" />
+              </div>
+              <span className={`font-bold text-lg tracking-tight truncate transition-all duration-300 ${isSidebarCollapsed ? 'opacity-0 invisible w-0' : 'opacity-100 visible w-auto'}`}>
+                IC System
+              </span>
+            </div>
+          </div>
+
+          <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto scrollbar-hide">
+            <SidebarItem 
+              icon={<Layout className="w-5 h-5" />} 
+              label="Tasks" 
+              active={currentView === 'tasks'} 
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+              onClick={() => setCurrentView('tasks')}
+            />
+            <SidebarItem 
+              icon={<Layers className="w-5 h-5" />} 
+              label="Backlog" 
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+            />
+            <SidebarItem 
+              icon={<BarChart3 className="w-5 h-5" />} 
+              label="Reports" 
+              active={currentView === 'reports'}
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+              onClick={() => setCurrentView('reports')}
+            />
+            <div className="pt-4 mt-4 border-t border-[var(--border-color)]">
+              <SidebarItem 
+                icon={<Settings className="w-5 h-5" />} 
+                label="Settings" 
+                active={currentView === 'settings'}
+                collapsed={isSidebarCollapsed} 
+                visible={isSidebarVisible}
+                onClick={() => setCurrentView('settings')}
+              />
+            </div>
+          </nav>
+
+        <div className="p-4 border-t border-[var(--border-color)] shrink-0 overflow-hidden">
+          <div className="flex items-center gap-3">
+            {currentUserPhoto ? (
+              <img 
+                src={currentUserPhoto} 
+                alt={currentUserName} 
+                className="w-8 h-8 rounded-full shadow-sm shrink-0 object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div 
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-on-accent)] text-xs font-bold shadow-sm shrink-0"
+                style={{ backgroundColor: getAvatarColor(currentUserName).bg, color: getAvatarColor(currentUserName).text }}
+              >
+                {getInitials(currentUserName)}
+              </div>
+            )}
+            <div className={`overflow-hidden transition-all duration-300 ${isSidebarCollapsed ? 'opacity-0 invisible w-0' : 'opacity-100 visible w-auto'}`}>
+              <p className="text-sm font-medium truncate">{currentUserName}</p>
+              <p className="text-[10px] text-[var(--text-sidebar-muted)] truncate">{currentUser?.email}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header */}
+        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between sticky top-0 z-10 shrink-0 transition-colors duration-200">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+              className="p-1.5 hover:bg-[var(--bg-secondary)] rounded transition-colors text-[var(--text-secondary)]"
+              title={isSidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">
+              {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : 'Tasks'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4">
+            {currentView === 'tasks' && (
+              <>
+                {/* Status & Priority Filters */}
+                <div className="flex items-center gap-2">
+                  <div className="relative group">
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+                      <Filter className="w-3.5 h-3.5" />
+                      Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}
+                    </button>
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                      {STATUS_COLUMNS.map(status => (
+                        <label key={status.id} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedStatuses.includes(status.id)}
+                            onChange={() => {
+                              setSelectedStatuses(prev => 
+                                prev.includes(status.id) ? prev.filter(s => s !== status.id) : [...prev, status.id]
+                              );
+                              setCurrentPage(1);
+                            }}
+                            className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                          />
+                          <span className="text-xs text-[var(--text-primary)]">{status.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative group">
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}
+                    </button>
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                      {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
+                        <label key={priority} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedPriorities.includes(priority)}
+                            onChange={() => {
+                              setSelectedPriorities(prev => 
+                                prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
+                              );
+                              setCurrentPage(1);
+                            }}
+                            className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                          />
+                          <span className="text-xs text-[var(--text-primary)]">{priority}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* View Toggle */}
+                <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+                  <button 
+                    onClick={() => setViewMode('board')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'board' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    title="Board View"
+                  >
+                    <Layout className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Board</span>
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('list')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    title="List View"
+                  >
+                    <ListIcon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">List</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center -space-x-2 mr-2">
+                  {uniqueAssignees.map((assignee) => {
+                    const colors = getAvatarColor(assignee);
+                    const isSelected = selectedAssignees.includes(assignee);
+                    return (
+                      <button
+                        key={assignee}
+                        onClick={() => toggleAssigneeFilter(assignee)}
+                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
+                          isSelected
+                            ? 'ring-2 ring-blue-400 scale-110 z-10 border-[var(--bg-surface)]'
+                            : 'border-[var(--bg-surface)] hover:scale-105'
+                        }`}
+                        title={assignee}
+                        style={{ 
+                          backgroundColor: colors.bg,
+                          color: colors.text
+                        }}
+                      >
+                        {getInitials(assignee)}
+                      </button>
+                    );
+                  })}
+                  {(selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedPriorities.length > 0) && (
+                    <button 
+                      onClick={() => {
+                        setSelectedAssignees([]);
+                        setSelectedStatuses([]);
+                        setSelectedPriorities([]);
+                        setCurrentPage(1);
+                      }}
+                      className="ml-4 text-xs text-[var(--accent-color)] hover:underline font-medium whitespace-nowrap"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                  <input 
+                    type="text" 
+                    placeholder="Search tasks..."
+                    className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-64 text-[var(--text-primary)]"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={toggleTheme}
+                className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
+                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              >
+                {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              </button>
+              <button 
+                onClick={() => {
+                  import('./firebase').then(({ logOut }) => logOut());
+                }}
+                className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
+                title="Sign Out"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              </button>
+              {currentView === 'tasks' && (
+                <button 
+                  onClick={() => openModal()}
+                  className="btn-primary px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {currentView === 'settings' ? (
+          <SettingsView users={users} currentUserRole={currentUserRole} onUsersChange={fetchUsers} />
+        ) : currentView === 'reports' ? (
+          <ReportsView tasks={tasks} />
+        ) : (
+          <>
+            {/* Main Content */}
+            <main className="flex-1 p-6 overflow-auto">
         {viewMode === 'board' ? (
           <DndContext
             sensors={sensors}
@@ -1086,24 +1955,26 @@ export default function App() {
                 
                 return (
                   <div className={`task-card shadow-xl scale-105 opacity-90 cursor-grabbing border ${
-                    isOverdue ? 'border-red-400 bg-red-50' : 'border-blue-500 bg-white'
+                    isOverdue 
+                      ? 'border-[var(--danger-color)] bg-[var(--danger-color)] bg-opacity-10' 
+                      : 'border-[var(--accent-color)] bg-[var(--bg-surface)]'
                   }`}>
-                    <p className="text-sm text-[#172B4D] mb-1 leading-tight font-medium pr-6">
+                    <p className="text-sm text-[var(--text-primary)] mb-1 leading-tight font-medium pr-6">
                       {activeTask.title}
                     </p>
                     {activeTask.description && (
-                      <p className="text-[11px] text-[#5E6C84] mb-3 line-clamp-2 leading-normal">
+                      <p className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2 leading-normal">
                         {activeTask.description}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1 mb-3">
                       {activeTask.category && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">
+                        <span className="text-[10px] px-1.5 py-0.5 badge-accent rounded font-medium">
                           {activeTask.category}
                         </span>
                       )}
                       {activeTask.brand && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded font-medium">
+                        <span className="text-[10px] px-1.5 py-0.5 badge-purple rounded font-medium">
                           {activeTask.brand}
                         </span>
                       )}
@@ -1111,7 +1982,7 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {getPriorityIcon(activeTask.priority)}
-                        <span className="text-[10px] font-bold text-[#5E6C84]">IC-{activeTask.id}</span>
+                        <span className="text-[10px] font-bold text-[var(--text-muted)]">{activeTask.display_id || `IC-${activeTask.id}`}</span>
                       </div>
                     </div>
                   </div>
@@ -1121,12 +1992,33 @@ export default function App() {
           </DndContext>
         ) : (
           <TaskListView 
-            tasks={filteredTasks} 
+            tasks={paginatedTasks} 
             onTaskClick={openModal} 
-            getPriorityIcon={getPriorityIcon} 
+            getPriorityIcon={getPriorityIcon}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            rowsPerPage={rowsPerPage}
+            onPageChange={setCurrentPage}
+            onRowsPerPageChange={(rows) => {
+              setRowsPerPage(rows);
+              setCurrentPage(1);
+            }}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSort={(field) => {
+              if (sortField === field) {
+                setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+              } else {
+                setSortField(field);
+                setSortOrder('asc');
+              }
+            }}
           />
         )}
-      </main>
+        </main>
+          </>
+        )}
+      </div>
 
       {/* Modal */}
       <AnimatePresence>
@@ -1143,29 +2035,91 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white w-full max-w-2xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="relative bg-[var(--bg-surface)] w-full max-w-2xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors duration-200"
             >
-              <div className="px-6 py-4 border-b border-[#DFE1E6] flex items-center justify-between">
-                <h3 className="text-lg font-bold text-[#172B4D]">
-                  {editingTask ? `Edit Issue IC-${editingTask.id}` : 'Create Issue'}
+              <div className="px-6 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[var(--text-primary)]">
+                  {editingTask ? `Edit Issue ${editingTask.display_id || `IC-${editingTask.id}`}` : 'Create Issue'}
                 </h3>
                 <div className="flex items-center gap-2">
+                  {!editingTask && templates.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <select 
+                        className="text-xs px-2 py-1 border border-[var(--border-color)] rounded bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+                        value={selectedTemplateId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setSelectedTemplateId('');
+                          } else {
+                            const template = templates.find(t => String(t.id) === String(val));
+                            if (template) {
+                              setSelectedTemplateId(template.id as any);
+                              handleApplyTemplate(template);
+                            }
+                          }
+                        }}
+                      >
+                        <option value="">Use Template...</option>
+                        {templates.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      {selectedTemplateId && (
+                        <div className="flex items-center">
+                          {showTemplateDeleteConfirm ? (
+                            <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
+                              <span className="text-[10px] font-bold text-[var(--danger-color)] px-1">Delete?</span>
+                              <button 
+                                type="button"
+                                onClick={handleDeleteTemplate}
+                                disabled={isDeletingTemplate}
+                                className="bg-[var(--danger-color)] text-[var(--text-on-accent)] text-[10px] font-bold px-2 py-1 rounded hover:bg-[var(--danger-hover)] transition-colors disabled:opacity-50"
+                              >
+                                {isDeletingTemplate ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Yes'}
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => setShowTemplateDeleteConfirm(false)}
+                                disabled={isDeletingTemplate}
+                                className="text-[var(--text-muted)] text-[10px] font-bold px-2 py-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setShowTemplateDeleteConfirm(true)}
+                              className="p-1 text-[var(--text-muted)] hover:text-[var(--danger-color)] rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                              title="Delete Template"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {editingTask && (
                     <div className="flex items-center">
                       {isDeletingTask ? (
-                        <div className="flex items-center gap-1 bg-red-50 rounded-md p-1 border border-red-200">
-                          <span className="text-[10px] font-bold text-red-600 px-1">Confirm?</span>
+                        <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
+                          <span className="text-[10px] font-bold text-[var(--danger-color)] px-1">Confirm?</span>
                           <button 
                             type="button"
                             onClick={() => handleDelete(editingTask.id)}
-                            className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded hover:bg-red-700 transition-colors"
+                            disabled={isDeletingTaskInProgress}
+                            className="bg-[var(--danger-color)] text-[var(--text-on-accent)] text-[10px] font-bold px-2 py-1 rounded hover:bg-[var(--danger-hover)] transition-colors disabled:opacity-50 flex items-center gap-1"
                           >
+                            {isDeletingTaskInProgress && <Loader2 className="w-3 h-3 animate-spin" />}
                             Yes
                           </button>
                           <button 
                             type="button"
                             onClick={() => setIsDeletingTask(false)}
-                            className="text-[#5E6C84] text-[10px] font-bold px-2 py-1 rounded hover:bg-[#EBECF0] transition-colors"
+                            disabled={isDeletingTaskInProgress}
+                            className="text-[var(--text-muted)] text-[10px] font-bold px-2 py-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
                           >
                             No
                           </button>
@@ -1174,7 +2128,7 @@ export default function App() {
                         <button 
                           type="button"
                           onClick={() => setIsDeletingTask(true)}
-                          className="p-2 text-[#5E6C84] hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                          className="p-2 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded-md transition-colors"
                           title="Delete Task"
                         >
                           <Trash2 className="w-5 h-5" />
@@ -1182,19 +2136,19 @@ export default function App() {
                       )}
                     </div>
                   )}
-                  <button onClick={closeModal} className="p-2 hover:bg-[#F4F5F7] rounded-md transition-colors">
-                    <X className="w-5 h-5 text-[#42526E]" />
+                  <button onClick={closeModal} disabled={isSavingTask} className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors disabled:opacity-50">
+                    <X className="w-5 h-5 text-[var(--text-secondary)]" />
                   </button>
                 </div>
               </div>
 
               <form id="task-form" onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-6">
                 <div>
-                  <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Summary</label>
+                  <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Summary</label>
                   <input 
                     required
                     type="text"
-                    className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                     value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                     placeholder="What needs to be done?"
@@ -1202,10 +2156,10 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Description</label>
+                  <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Description</label>
                   <textarea 
                     rows={4}
-                    className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] resize-none"
                     value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Add more details..."
@@ -1214,76 +2168,109 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Request Date</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Request Date</label>
                     <input 
                       type="date"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
                       value={formData.request_date}
                       onChange={e => setFormData({ ...formData, request_date: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Due Date</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Due Date</label>
                     <input 
                       type="date"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
                       value={formData.due_date}
                       onChange={e => setFormData({ ...formData, due_date: e.target.value })}
                     />
                   </div>
                 </div>
 
+                {editingTask && (
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Created By</label>
+                      <div className="px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded text-sm">
+                        {editingTask.authorName || 'Unknown'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Created At</label>
+                      <div className="px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded text-sm">
+                        {formatDateTime(editingTask.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Category</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Category</label>
                     <input 
                       type="text"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      list="categories"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.category}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
                       placeholder="e.g. Design, Marketing"
                     />
+                    <datalist id="categories">
+                      {uniqueCategories.map(cat => <option key={cat} value={cat} />)}
+                    </datalist>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Brand</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Brand</label>
                     <input 
                       type="text"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      list="brands"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.brand}
                       onChange={e => setFormData({ ...formData, brand: e.target.value })}
                       placeholder="e.g. Brand A, Brand B"
                     />
+                    <datalist id="brands">
+                      {uniqueBrands.map(brand => <option key={brand} value={brand} />)}
+                    </datalist>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Requestor</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Requestor</label>
                     <input 
                       type="text"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      list="requestors"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.requestor}
                       onChange={e => setFormData({ ...formData, requestor: e.target.value })}
                       placeholder="Who requested this?"
                     />
+                    <datalist id="requestors">
+                      {uniqueRequestors.map(req => <option key={req} value={req} />)}
+                    </datalist>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Division</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Division</label>
                     <input 
                       type="text"
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      list="divisions"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.division}
                       onChange={e => setFormData({ ...formData, division: e.target.value })}
                       placeholder="e.g. Sales, HR"
                     />
+                    <datalist id="divisions">
+                      {uniqueDivisions.map(div => <option key={div} value={div} />)}
+                    </datalist>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Status</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Status</label>
                     <select 
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
                       value={formData.status}
                       onChange={e => setFormData({ ...formData, status: e.target.value as TaskStatus })}
                     >
@@ -1293,9 +2280,9 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Priority</label>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Priority</label>
                     <select 
-                      className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
                       value={formData.priority}
                       onChange={e => setFormData({ ...formData, priority: e.target.value as TaskPriority })}
                     >
@@ -1307,23 +2294,94 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#5E6C84] uppercase mb-2">Assignee</label>
+                  <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Assignee</label>
                   <div className="relative">
-                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#42526E]" />
-                    <input 
-                      type="text"
-                      className="w-full pl-10 pr-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                    <select 
+                      className="w-full pl-10 pr-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] appearance-none"
                       value={formData.assignee}
                       onChange={e => setFormData({ ...formData, assignee: e.target.value })}
-                      placeholder="Assign to someone..."
-                    />
+                    >
+                      <option value="">Unassigned</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.name}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Sub-tasks Section */}
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-[var(--text-muted)]" />
+                      <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase">Sub-tasks</h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addSubTask}
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--accent-color)] hover:text-[var(--accent-hover)]"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Sub-task
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {formData.subtasks?.map((st) => (
+                      <div key={st.id} className="flex items-center gap-3 group">
+                        <button
+                          type="button"
+                          onClick={() => toggleSubTask(st.id)}
+                          className={`flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                            st.completed 
+                              ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-[var(--text-on-accent)]' 
+                              : 'border-[var(--border-color)] hover:border-[var(--border-focus)]'
+                          }`}
+                        >
+                          {!!st.completed && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </button>
+                        <input
+                          type="text"
+                          className={`flex-1 bg-transparent border-none focus:ring-0 text-sm p-0 ${
+                            st.completed ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-primary)]'
+                          }`}
+                          value={st.title}
+                          onChange={(e) => updateSubTaskTitle(st.id, e.target.value)}
+                          placeholder="What needs to be done?"
+                        />
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="relative flex items-center">
+                            <CalendarDays className="w-3.5 h-3.5 absolute left-2 text-[var(--text-muted)] pointer-events-none" />
+                            <input
+                              type="date"
+                              className="pl-7 pr-2 py-1 text-[10px] bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] text-[var(--text-primary)] w-28"
+                              value={st.due_date || ''}
+                              onChange={(e) => updateSubTaskDueDate(st.id, e.target.value)}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteSubTask(st.id)}
+                            className="p-1 text-[var(--text-muted)] hover:text-[var(--danger-color)]"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {(!formData.subtasks || formData.subtasks.length === 0) && (
+                      <p className="text-xs text-[var(--text-muted)] italic py-2">No sub-tasks yet.</p>
+                    )}
                   </div>
                 </div>
 
                 {/* Attachments Section */}
                 <div 
                   className={`mt-8 p-4 border-2 border-dashed rounded-lg transition-colors ${
-                    isDragOver ? 'border-blue-500 bg-blue-50' : 'border-[#DFE1E6] bg-[#F4F5F7]'
+                    isDragOver 
+                      ? 'border-[var(--border-focus)] bg-[var(--accent-color)] bg-opacity-10' 
+                      : 'border-[var(--border-color)] bg-[var(--bg-primary)]'
                   }`}
                   onDragOver={handleDragOverFile}
                   onDragLeave={handleDragLeaveFile}
@@ -1331,14 +2389,14 @@ export default function App() {
                 >
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                      <Paperclip className="w-4 h-4 text-[#5E6C84]" />
-                      <h4 className="text-xs font-bold text-[#5E6C84] uppercase">Attachments</h4>
+                      <Paperclip className="w-4 h-4 text-[var(--text-muted)]" />
+                      <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase">Attachments</h4>
                     </div>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
-                      className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--accent-color)] hover:text-[var(--accent-hover)] disabled:opacity-50"
                     >
                       {isUploading ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1362,17 +2420,17 @@ export default function App() {
                       {attachments.map((file) => (
                         <div 
                           key={file.id}
-                          className="flex items-center justify-between p-2 bg-white border border-[#DFE1E6] rounded group"
+                          className="flex items-center justify-between p-2 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded group"
                         >
                           <div className="flex items-center gap-2 overflow-hidden">
-                            <div className="p-1.5 bg-blue-50 rounded">
-                              <FileText className="w-4 h-4 text-blue-600" />
+                            <div className="p-1.5 bg-[var(--accent-color)] bg-opacity-10 rounded">
+                              <FileText className="w-4 h-4 text-[var(--accent-color)]" />
                             </div>
                             <div className="overflow-hidden">
-                              <p className="text-xs font-medium text-[#172B4D] truncate" title={file.original_name}>
+                              <p className="text-xs font-medium text-[var(--text-primary)] truncate" title={file.original_name}>
                                 {file.original_name}
                               </p>
-                              <p className="text-[10px] text-[#5E6C84]">
+                              <p className="text-[10px] text-[var(--text-muted)]">
                                 {formatFileSize(file.size)}
                               </p>
                             </div>
@@ -1381,7 +2439,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDownload(file)}
-                              className="p-1.5 text-[#5E6C84] hover:text-blue-600 hover:bg-blue-50 rounded"
+                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded"
                               title="Download"
                             >
                               <Download className="w-3.5 h-3.5" />
@@ -1389,10 +2447,15 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDeleteAttachment(file.id)}
-                              className="p-1.5 text-[#5E6C84] hover:text-red-600 hover:bg-red-50 rounded"
+                              disabled={isDeletingAttachment === file.id}
+                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded disabled:opacity-50"
                               title="Delete"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {isDeletingAttachment === file.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           </div>
                         </div>
@@ -1406,17 +2469,17 @@ export default function App() {
                       {pendingFiles.map((file, index) => (
                         <div 
                           key={index}
-                          className="flex items-center justify-between p-2 bg-white border border-blue-200 border-dashed rounded group"
+                          className="flex items-center justify-between p-2 bg-[var(--bg-surface)] border border-[var(--accent-color)] border-opacity-30 border-dashed rounded group"
                         >
                           <div className="flex items-center gap-2 overflow-hidden">
-                            <div className="p-1.5 bg-blue-50 rounded">
-                              <FileText className="w-4 h-4 text-blue-600" />
+                            <div className="p-1.5 bg-[var(--accent-color)] bg-opacity-10 rounded">
+                              <FileText className="w-4 h-4 text-[var(--accent-color)]" />
                             </div>
                             <div className="overflow-hidden">
-                              <p className="text-xs font-medium text-[#172B4D] truncate" title={file.name}>
+                              <p className="text-xs font-medium text-[var(--text-primary)] truncate" title={file.name}>
                                 {file.name}
                               </p>
-                              <p className="text-[10px] text-[#5E6C84]">
+                              <p className="text-[10px] text-[var(--text-muted)]">
                                 {formatFileSize(file.size)} (Pending)
                               </p>
                             </div>
@@ -1424,7 +2487,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => removePendingFile(index)}
-                            className="p-1.5 text-[#5E6C84] hover:text-red-600 hover:bg-red-50 rounded"
+                            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded"
                             title="Remove"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1436,7 +2499,7 @@ export default function App() {
 
                   {attachments.length === 0 && pendingFiles.length === 0 && (
                     <div className="text-center py-6">
-                      <p className="text-xs text-[#5E6C84]">
+                      <p className="text-xs text-[var(--text-muted)]">
                         No attachments yet. Drag and drop files here or click Upload.
                       </p>
                     </div>
@@ -1445,15 +2508,15 @@ export default function App() {
 
                 {/* Comments Section */}
                 {editingTask && (
-                  <div className="pt-6 border-t border-[#DFE1E6]">
+                  <div className="pt-6 border-t border-[var(--border-color)]">
                     <div className="flex items-center gap-2 mb-4">
-                      <MessageSquare className="w-4 h-4 text-[#42526E]" />
-                      <h4 className="text-xs font-bold text-[#5E6C84] uppercase">Comments</h4>
+                      <MessageSquare className="w-4 h-4 text-[var(--text-secondary)]" />
+                      <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase">Comments</h4>
                     </div>
 
                     <div className="space-y-4 mb-6">
                       {comments.length === 0 ? (
-                        <p className="text-sm text-[#5E6C84] italic">No comments yet.</p>
+                        <p className="text-sm text-[var(--text-muted)] italic">No comments yet.</p>
                       ) : (
                         comments.map(comment => {
                           const colors = getAvatarColor(comment.author);
@@ -1467,20 +2530,104 @@ export default function App() {
                               </div>
                               <div className="flex-1">
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-bold text-[#172B4D]">{comment.author}</span>
+                                  <span className="text-sm font-bold text-[var(--text-primary)]">{comment.author}</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-[#5E6C84]">
-                                      {new Date(comment.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                                      {formatDateTime(comment.created_at)}
+                                      {comment.updated_at && (
+                                        <span className="italic opacity-70">(edited)</span>
+                                      )}
                                     </span>
-                                    <button 
-                                      onClick={() => handleDeleteComment(comment.id)}
-                                      className="opacity-0 group-hover:opacity-100 p-1 text-red-600 hover:bg-red-50 rounded transition-all"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {commentToDelete === comment.id ? (
+                                        <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              handleDeleteComment(comment.id);
+                                            }}
+                                            disabled={isDeletingComment}
+                                            className="bg-[var(--danger-color)] text-[var(--text-on-accent)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--danger-hover)] disabled:opacity-50"
+                                          >
+                                            {isDeletingComment ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Delete'}
+                                          </button>
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setCommentToDelete(null);
+                                            }}
+                                            disabled={isDeletingComment}
+                                            className="text-[var(--text-muted)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+                                          >
+                                            No
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setEditingCommentId(comment.id);
+                                              setEditingCommentContent(comment.content);
+                                            }}
+                                            className="p-1 text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded transition-all"
+                                            title="Edit"
+                                          >
+                                            <Edit2 className="w-3 h-3" />
+                                          </button>
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setCommentToDelete(comment.id);
+                                            }}
+                                            className="p-1 text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded transition-all"
+                                            title="Delete"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                                <p className="text-sm text-[#42526E] whitespace-pre-wrap">{comment.content}</p>
+                                {editingCommentId === comment.id ? (
+                                  <div className="mt-1">
+                                    <textarea
+                                      className="w-full px-2 py-1.5 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] resize-none"
+                                      rows={2}
+                                      value={editingCommentContent}
+                                      onChange={e => setEditingCommentContent(e.target.value)}
+                                    />
+                                    <div className="flex justify-end gap-2 mt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingCommentId(null)}
+                                        disabled={isUpdatingComment}
+                                        className="px-2 py-1 text-[10px] font-bold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] rounded disabled:opacity-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleUpdateComment}
+                                        disabled={isUpdatingComment || !editingCommentContent.trim()}
+                                        className="px-2 py-1 text-[10px] font-bold btn-primary rounded hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                                      >
+                                        {isUpdatingComment ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Update'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">{comment.content}</p>
+                                )}
                               </div>
                             </div>
                           );
@@ -1489,16 +2636,25 @@ export default function App() {
                     </div>
 
                     <div className="flex gap-3">
-                      <div 
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
-                        style={{ backgroundColor: getAvatarColor('John Doe').bg, color: getAvatarColor('John Doe').text }}
-                      >
-                        {getInitials('John Doe')}
-                      </div>
+                      {currentUserPhoto ? (
+                        <img 
+                          src={currentUserPhoto} 
+                          alt={currentUserName} 
+                          className="w-8 h-8 rounded-full shadow-sm shrink-0 object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div 
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-on-accent)] text-xs font-bold shrink-0 shadow-sm"
+                          style={{ backgroundColor: getAvatarColor(currentUserName).bg, color: getAvatarColor(currentUserName).text }}
+                        >
+                          {getInitials(currentUserName)}
+                        </div>
+                      )}
                       <div className="flex-1 relative">
                         <textarea 
                           rows={2}
-                          className="w-full px-3 py-2 border border-[#DFE1E6] rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                          className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] text-sm resize-none"
                           placeholder="Add a comment..."
                           value={newComment}
                           onChange={e => setNewComment(e.target.value)}
@@ -1506,7 +2662,7 @@ export default function App() {
                         <button 
                           disabled={isSubmittingComment || !newComment.trim()}
                           onClick={handleAddComment}
-                          className="absolute right-2 bottom-2 p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="absolute right-2 bottom-2 p-1.5 btn-primary rounded hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {isSubmittingComment ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -1518,24 +2674,226 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* Linked Tasks Section */}
+                {editingTask && (
+                  <div className="pt-6 border-t border-[var(--border-color)]">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <LinkIcon className="w-4 h-4 text-[var(--text-secondary)]" />
+                        <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase">Linked Tasks</h4>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 mb-4">
+                      {taskLinks.length === 0 ? (
+                        <p className="text-sm text-[var(--text-muted)] italic">No linked tasks yet.</p>
+                      ) : (
+                        taskLinks.map(link => (
+                          <div key={link.id} className="flex items-center justify-between p-2 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded group">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="px-1.5 py-0.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-[10px] font-bold text-[var(--text-muted)] uppercase">
+                                {link.link_type.replace(/_/g, ' ')}
+                              </div>
+                              <div className="overflow-hidden">
+                                <p className="text-xs font-medium text-[var(--text-primary)] truncate">
+                                  <span className="text-[var(--text-muted)] mr-1">#{link.target_task_display_id || link.target_task_id}</span>
+                                  {link.target_task_title}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className={`text-[10px] px-1 rounded-sm ${
+                                    link.target_task_status === 'DONE' ? 'badge-success' :
+                                    link.target_task_status === 'REVIEW' ? 'badge-accent' :
+                                    link.target_task_status === 'IN_PROGRESS' ? 'badge-warning' :
+                                    'badge-neutral'
+                                  }`}>
+                                    {link.target_task_status}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLink(link.id)}
+                              disabled={isRemovingLink === link.id}
+                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                              title="Remove link"
+                            >
+                              {isRemovingLink === link.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <X className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2 p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-color)]">
+                      <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Add New Link</p>
+                      <div className="flex gap-2">
+                        <select
+                          className="text-xs px-2 py-1.5 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+                          value={selectedLinkType}
+                          onChange={e => setSelectedLinkType(e.target.value as LinkType)}
+                        >
+                          <option value="relates_to">Relates to</option>
+                          <option value="blocks">Blocks</option>
+                          <option value="is_blocked_by">Is blocked by</option>
+                          <option value="duplicates">Duplicates</option>
+                          <option value="is_duplicated_by">Is duplicated by</option>
+                        </select>
+                        <div className="flex-1 relative">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                          <input
+                            type="text"
+                            className="w-full pl-8 pr-3 py-1.5 text-xs border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+                            placeholder="Search task by title or ID..."
+                            value={linkSearchQuery}
+                            onChange={e => setLinkSearchQuery(e.target.value)}
+                          />
+                          
+                          {linkSearchQuery.trim() && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                              {tasks
+                                .filter(t => 
+                                  t.id !== editingTask.id && 
+                                  (t.title.toLowerCase().includes(linkSearchQuery.toLowerCase()) || 
+                                   t.display_id?.toLowerCase().includes(linkSearchQuery.toLowerCase()) ||
+                                   t.id.toString().includes(linkSearchQuery))
+                                )
+                                .slice(0, 5)
+                                .map(t => (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => handleAddLink(t.id)}
+                                    disabled={isLinkingTask}
+                                    className="w-full text-left px-3 py-2 hover:bg-[var(--bg-secondary)] text-xs border-b border-[var(--border-color)] last:border-0 disabled:opacity-50"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium text-[var(--text-primary)] truncate mr-2">
+                                        <span className="text-[var(--text-muted)] mr-1">#{t.display_id || `IC-${t.id}`}</span>
+                                        {t.title}
+                                      </span>
+                                      <span className="text-[10px] text-[var(--text-muted)] shrink-0">{t.status}</span>
+                                    </div>
+                                  </button>
+                                ))}
+                              {tasks.filter(t => 
+                                t.id !== editingTask.id && 
+                                (t.title.toLowerCase().includes(linkSearchQuery.toLowerCase()) || 
+                                 t.display_id?.toLowerCase().includes(linkSearchQuery.toLowerCase()) ||
+                                 t.id.toString().includes(linkSearchQuery))
+                              ).length === 0 && (
+                                <div className="px-3 py-2 text-xs text-[var(--text-muted)] italic">No tasks found</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Activity Log Section */}
+                {editingTask && (
+                  <div className="pt-6 border-t border-[var(--border-color)]">
+                    <div className="flex items-center gap-2 mb-4">
+                      <History className="w-4 h-4 text-[var(--text-secondary)]" />
+                      <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase">Activity Log</h4>
+                    </div>
+
+                    <div className="space-y-4">
+                      {activities.length === 0 ? (
+                        <p className="text-sm text-[var(--text-muted)] italic">No activity recorded yet.</p>
+                      ) : (
+                        <div className="relative before:absolute before:left-[15px] before:top-2 before:bottom-2 before:w-px before:bg-[var(--border-color)]">
+                          {activities.map((activity) => (
+                            <div key={activity.id} className="relative pl-10 pb-6 last:pb-0">
+                              <div className="absolute left-0 top-1 w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center z-10">
+                                <div className="w-2 h-2 rounded-full bg-[var(--accent-color)]" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="text-sm font-bold text-[var(--text-primary)]">{activity.user}</span>
+                                  <span className="text-xs text-[var(--text-muted)]">{activity.action}</span>
+                                </div>
+                                {activity.details && (
+                                  <p className="text-xs text-[var(--text-secondary)] mb-1">{activity.details}</p>
+                                )}
+                                <span className="text-[10px] text-[var(--text-muted)]">
+                                  {formatDateTime(activity.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </form>
 
-              <div className="px-6 py-4 border-t border-[#DFE1E6] flex justify-end gap-3 bg-[#F4F5F7]">
+              <div className="px-6 py-4 border-t border-[var(--border-color)] flex justify-end gap-3 bg-[var(--bg-secondary)] transition-colors duration-200">
                 <button 
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-[#42526E] hover:bg-[#EBECF0] rounded transition-colors"
+                  disabled={isSavingTask}
+                  className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] rounded transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
                   form="task-form"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
+                  disabled={isSavingTask}
+                  className="px-4 py-2 btn-primary text-sm font-medium rounded transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
+                  {isSavingTask && <Loader2 className="w-4 h-4 animate-spin" />}
                   {editingTask ? 'Save changes' : 'Create issue'}
                 </button>
               </div>
+
+              {/* Save as Template Popover */}
+              {!editingTask && (
+                <div className="px-6 py-3 border-t border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-between">
+                  {showTemplateSave ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <input 
+                        type="text"
+                        placeholder="Template Name"
+                        className="flex-1 px-2 py-1 text-xs border border-[var(--border-color)] rounded bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                        value={templateName}
+                        onChange={e => setTemplateName(e.target.value)}
+                      />
+                      <button 
+                        onClick={handleSaveTemplate}
+                        disabled={isSavingTemplate || !templateName.trim()}
+                        className="px-3 py-1 bg-[var(--success-color)] hover:bg-[var(--success-color)] text-[var(--text-on-accent)] text-xs font-bold rounded disabled:opacity-50"
+                      >
+                        {isSavingTemplate ? 'Saving...' : 'Save'}
+                      </button>
+                      <button 
+                        onClick={() => setShowTemplateSave(false)}
+                        disabled={isSavingTemplate}
+                        className="px-3 py-1 text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] text-xs font-bold rounded disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setShowTemplateSave(true)}
+                      className="text-xs font-bold text-[var(--success-color)] hover:text-[var(--success-color)] flex items-center gap-1.5"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Save as Template
+                    </button>
+                  )}
+                </div>
+              )}
             </motion.div>
           </div>
         )}

@@ -1,0 +1,160 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tasks
+    // Document ID: auto-generated
+    // Fields:
+    //   - title: string (required, max 100 chars)
+    //   - description: string (optional, max 1000 chars)
+    //   - status: string (required, 'todo', 'in-progress', 'done')
+    //   - priority: string (required, 'low', 'medium', 'high')
+    //   - authorId: string (required, immutable)
+    //   - createdAt: string (required, immutable)
+    //   - updatedAt: string (required)
+    //
+    // Collection: users
+    // Document ID: user uid
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.authorId;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+    
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !('field' in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+    
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidTask(data) {
+      return hasRequiredFields(['title', 'status', 'priority', 'authorId', 'created_at', 'updated_at']) &&
+             validStringLength('title', 1, 100) &&
+             (!('description' in data) || validStringLength('description', 0, 1000)) &&
+             data.status in ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE', 'CLOSED'] &&
+             data.priority in ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] &&
+             data.authorId == request.auth.uid &&
+             data.created_at is timestamp &&
+             data.updated_at is timestamp &&
+             (!('task_number' in data) || data.task_number is number) &&
+             (!('display_id' in data) || data.display_id is string);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == 'admin' ||
+          (request.auth.token.email == "dewangga@sirclo.com" && request.auth.token.email_verified == true)); // Default admin
+    }
+
+    function isValidUser(data) {
+      return hasRequiredFields(['name', 'email', 'role']) &&
+             data.name is string &&
+             data.email is string &&
+             data.role in ['admin', 'user'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidTask(request.resource.data);
+      allow update: if isAuthenticated() && 
+                       isValidTask(request.resource.data) &&
+                       request.resource.data.created_at == resource.data.created_at;
+      allow delete: if isAuthenticated();
+    }
+
+    match /templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.authorId == request.auth.uid && request.resource.data.authorId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    match /comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /activity_log/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /task_links/{linkId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /attachments/{attachmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /metadata/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isAdmin() || (userId == request.auth.token.email && !exists(/databases/$(database)/documents/users/$(request.auth.token.email))));
+      allow update: if isAdmin() && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

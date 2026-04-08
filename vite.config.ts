@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
 import {defineConfig, loadEnv} from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
@@ -20,7 +21,31 @@ export default defineConfig(({mode}) => {
 
   return {
     base: '/IC_System/',
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        injectRegister: 'auto',
+        includeAssets: ['pwa-icon.svg'],
+        manifest: {
+          name: 'IC Task Manager',
+          short_name: 'IC Tasks',
+          description: 'IC Task Manager Application',
+          theme_color: '#0747A6',
+          background_color: '#F4F5F7',
+          display: 'standalone',
+          icons: [
+            {
+              src: 'pwa-icon.svg',
+              sizes: '192x192 512x512',
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
+            }
+          ]
+        }
+      })
+    ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       '__FIREBASE_CONFIG__': JSON.stringify(firebaseConfig),

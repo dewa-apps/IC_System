@@ -8,6 +8,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 function Root() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Initialize theme early to prevent flash of wrong colors and fix CSS variables
   useEffect(() => {
@@ -28,6 +29,16 @@ function Root() {
     });
     return unsubscribe;
   }, []);
+
+  const handleSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      setAuthError(error.message || "Failed to sign in. Please try opening the app in a new tab.");
+    }
+  };
 
   if (loading) {
     return (
@@ -57,8 +68,16 @@ function Root() {
             Welcome back. Please sign in to access your workspace and manage your tasks.
           </p>
           
+          {authError && (
+            <div className="w-full mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm rounded-lg text-left">
+              <p className="font-semibold mb-1">Sign in failed</p>
+              <p className="text-xs">{authError}</p>
+              <p className="text-xs mt-2 font-medium">Tip: Try opening the app in a new tab by clicking the arrow icon at the top right of the preview window.</p>
+            </div>
+          )}
+          
           <button 
-            onClick={signInWithGoogle}
+            onClick={handleSignIn}
             className="w-full bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-3 rounded-xl hover:bg-[var(--bg-secondary)] hover:border-[var(--border-focus)] font-semibold transition-all duration-200 flex items-center justify-center gap-3 shadow-sm group"
           >
             <svg className="w-5 h-5 transition-transform group-hover:scale-110" viewBox="0 0 24 24">

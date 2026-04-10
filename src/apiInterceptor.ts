@@ -63,6 +63,33 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     }
   };
 
+  const triggerAssignmentNotification = async (assignee: string, taskTitle: string, displayId: string, assignedBy: string) => {
+    if (!assignee) return;
+    
+    const notificationPayload = {
+      type: 'TASK_ASSIGNMENT',
+      recipient: assignee,
+      title: `New Task Assigned: ${displayId}`,
+      message: `${assignedBy} assigned you to the task: "${taskTitle}"`,
+      task_display_id: displayId,
+      read: false,
+      created_at: serverTimestamp()
+    };
+    
+    // Simulate sending an email or push notification payload
+    console.log('🔔 [NOTIFICATION PAYLOAD GENERATED]\nSending to:', assignee, '\nPayload:', JSON.stringify({
+      ...notificationPayload,
+      created_at: new Date().toISOString()
+    }, null, 2));
+    
+    // Store in Firestore for in-app notifications
+    try {
+      await addDoc(collection(db, 'notifications'), notificationPayload);
+    } catch (e) {
+      console.error("Failed to save notification to Firestore", e);
+    }
+  };
+
   try {
     // --- METADATA ---
     if (path === 'metadata/dropdowns' && method === 'GET') {
@@ -228,6 +255,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       });
       await logActivity(docRef.id, "Created task", `Title: ${body.title}`);
       await updateDropdownMetadata(body);
+      
+      if (body.assignee) {
+        await triggerAssignmentNotification(body.assignee, body.title, displayId, userName);
+      }
+      
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }
@@ -238,12 +270,23 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       
       if (method === 'PATCH') {
         const body = JSON.parse(init?.body as string);
+        
+        const oldDoc = await getDoc(taskRef);
+        const oldData = oldDoc.exists() ? oldDoc.data() : null;
+        
         await updateDoc(taskRef, {
           ...body,
           updated_at: serverTimestamp()
         });
         await logActivity(taskId, "Updated task", "Task details updated");
         await updateDropdownMetadata(body);
+        
+        if (body.assignee && oldData && oldData.assignee !== body.assignee) {
+          const displayId = oldData.display_id || `IC-${taskId}`;
+          const taskTitle = body.title || oldData.title;
+          await triggerAssignmentNotification(body.assignee, taskTitle, displayId, userName);
+        }
+        
         const updatedDoc = await getDoc(taskRef);
         return new Response(JSON.stringify(formatDoc(updatedDoc)), { status: 200 });
       }

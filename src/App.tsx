@@ -702,6 +702,8 @@ export default function App() {
   const currentUserName = currentUser?.displayName || currentUser?.email || 'Unknown User';
   const currentUserPhoto = currentUser?.photoURL;
 
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -905,12 +907,16 @@ export default function App() {
     fetchTasks();
     fetchTemplates();
     fetchMetadataOptions();
-    
+  }, [currentUser]);
+
+  const myNameInDb = users.find(u => u.email === currentUser?.email)?.name || currentUserName;
+
+  useEffect(() => {
     // Subscribe to notifications
-    if (currentUserName) {
+    if (myNameInDb) {
       const q = query(
         collection(db, 'notifications'), 
-        where('recipient', '==', currentUserName),
+        where('recipient', '==', myNameInDb),
         orderBy('created_at', 'desc')
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -924,7 +930,7 @@ export default function App() {
       });
       return () => unsubscribe();
     }
-  }, [currentUser, currentUserName]);
+  }, [myNameInDb]);
 
   const markNotificationAsRead = async (id: string) => {
     try {
@@ -1001,9 +1007,6 @@ export default function App() {
       setIsRemovingLink(null);
     }
   };
-
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
 
   const fetchUsers = async () => {
     try {

@@ -94,7 +94,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
         const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
         
-        await originalFetch(gasUrl, {
+        const response = await originalFetch(gasUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain;charset=utf-8',
@@ -106,7 +106,9 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
             body: `Hello ${assignee},\n\n${assignedBy} has assigned you to a new task.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
           })
         });
-        console.log(`Email notification sent to ${assigneeEmail}`);
+        
+        const resultText = await response.text();
+        console.log(`Email notification sent to ${assigneeEmail}. GAS Response:`, resultText);
       } else {
         console.warn(`Could not find email for assignee: ${assignee}`);
       }

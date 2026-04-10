@@ -707,6 +707,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskLimit, setTaskLimit] = useState(50);
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
   const [columns, setColumns] = useState<{ id: TaskStatus; label: string }[]>([
     { id: 'TODO', label: 'To Do' },
     { id: 'IN_PROGRESS', label: 'In Progress' },
@@ -1053,15 +1055,22 @@ export default function App() {
 
   const fetchTasks = async () => {
     try {
-      const res = await apiFetch('/api/tasks');
+      const res = await apiFetch(`/api/tasks?limit=${taskLimit}`);
       const data = await res.json();
       setTasks(data);
+      setHasMoreTasks(data.length >= taskLimit);
     } catch (err) {
       console.error('Failed to fetch tasks:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchTasks();
+    }
+  }, [taskLimit]);
 
   const fetchMetadataOptions = async () => {
     try {
@@ -1680,7 +1689,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
             onClick={() => setIsSidebarVisible(false)}
           />
         )}
@@ -1688,7 +1697,7 @@ export default function App() {
 
       {/* Sidebar */}
       <aside 
-        className={`bg-[var(--bg-sidebar)] text-[var(--text-sidebar)] transition-all duration-300 flex flex-col fixed lg:sticky top-0 h-screen z-30 shrink-0 border-r border-[var(--border-color)] ${
+        className={`bg-[var(--bg-sidebar)] text-[var(--text-sidebar)] transition-all duration-300 flex flex-col fixed lg:sticky top-0 h-screen z-50 shrink-0 border-r border-[var(--border-color)] ${
           isSidebarVisible 
             ? (isSidebarCollapsed ? 'w-16' : 'w-64') 
             : 'w-0 opacity-0 pointer-events-none'
@@ -1778,7 +1787,7 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between sticky top-0 z-40 shrink-0 transition-colors duration-200">
+        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-4 md:px-6 py-4 flex items-center justify-between sticky top-0 z-40 shrink-0 transition-colors duration-200 flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarVisible(!isSidebarVisible)}
@@ -1791,7 +1800,7 @@ export default function App() {
               {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : 'Tasks'}
             </h2>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
             {currentView === 'tasks' && (
               <>
                 {/* Status & Priority Filters */}
@@ -1910,7 +1919,7 @@ export default function App() {
                   <input 
                     type="text" 
                     placeholder="Search tasks..."
-                    className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-64 text-[var(--text-primary)]"
+                    className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-32 sm:w-48 md:w-64 text-[var(--text-primary)] transition-all"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -2003,10 +2012,10 @@ export default function App() {
               {currentView === 'tasks' && (
                 <button 
                   onClick={() => openModal()}
-                  className="btn-primary px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+                  className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
-                  Create
+                  <span className="hidden sm:inline">Create</span>
                 </button>
               )}
             </div>
@@ -2116,6 +2125,17 @@ export default function App() {
               }
             }}
           />
+        )}
+        
+        {hasMoreTasks && (
+          <div className="flex justify-center mt-8 pb-8">
+            <button
+              onClick={() => setTaskLimit(prev => prev + 50)}
+              className="px-6 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-full text-sm font-medium hover:bg-[var(--bg-surface)] hover:text-[var(--accent-color)] transition-colors shadow-sm flex items-center gap-2"
+            >
+              Load More Tasks
+            </button>
+          </div>
         )}
         </main>
           </>

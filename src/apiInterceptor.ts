@@ -247,9 +247,14 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     }
 
     // --- TASKS ---
-    if (path === 'tasks' && method === 'GET') {
+    if (path.startsWith('tasks') && method === 'GET' && segments[0] === 'tasks' && segments.length === 1) {
       if (!userId) return new Response('[]', { status: 200 });
-      const q = query(collection(db, 'tasks'), orderBy('created_at', 'desc'));
+      
+      const urlObj = new URL(url, window.location.origin);
+      const limitParam = urlObj.searchParams.get('limit');
+      const limitVal = limitParam ? parseInt(limitParam, 10) : 100;
+
+      const q = query(collection(db, 'tasks'), orderBy('created_at', 'desc'), limit(limitVal));
       const snapshot = await getDocs(q);
       const tasks = snapshot.docs.map(formatDoc);
       return new Response(JSON.stringify(tasks), { status: 200 });

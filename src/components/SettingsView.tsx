@@ -20,6 +20,7 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
   const [userFormData, setUserFormData] = useState({ name: '', email: '', role: 'user' as 'admin' | 'user' });
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,11 +53,11 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
     setIsDeletingUser(userId);
     try {
       const res = await apiFetch(`/api/users/${userId}`, { method: 'DELETE' });
       if (res.ok) {
+        setUserToDelete(null);
         onUsersChange();
       } else {
         const error = await res.json();
@@ -343,29 +344,49 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setIsEditingUser(user);
-                                  setIsAddingUser(false);
-                                  setUserFormData({ name: user.name, email: user.email, role: user.role });
-                                }}
-                                className="p-1.5 text-[var(--text-secondary)] hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                                title="Edit User"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(user.id)}
-                                disabled={isDeletingUser === user.id || user.email === currentUser?.email}
-                                className="p-1.5 text-[var(--text-secondary)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
-                                title={user.email === currentUser?.email ? "Cannot delete yourself" : "Delete User"}
-                              >
-                                {isDeletingUser === user.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
-                              </button>
+                              {userToDelete === user.id ? (
+                                <div className="flex items-center gap-1 bg-red-50 dark:bg-red-900/20 rounded-md p-0.5 border border-red-200 dark:border-red-800">
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleDeleteUser(user.id)}
+                                    disabled={isDeletingUser === user.id}
+                                    className="text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
+                                  >
+                                    {isDeletingUser === user.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    Yes
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setUserToDelete(null)}
+                                    disabled={isDeletingUser === user.id}
+                                    className="text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setIsEditingUser(user);
+                                      setIsAddingUser(false);
+                                      setUserFormData({ name: user.name, email: user.email, role: user.role });
+                                    }}
+                                    className="p-1.5 text-[var(--text-secondary)] hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                                    title="Edit User"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setUserToDelete(user.id)}
+                                    disabled={isDeletingUser === user.id || user.email === currentUser?.email}
+                                    className="p-1.5 text-[var(--text-secondary)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                                    title={user.email === currentUser?.email ? "Cannot delete yourself" : "Delete User"}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>

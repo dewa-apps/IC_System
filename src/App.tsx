@@ -734,6 +734,7 @@ export default function App() {
   const [editingCommentContent, setEditingCommentContent] = useState('');
   const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [attachmentToDelete, setAttachmentToDelete] = useState<string | number | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [metadataOptions, setMetadataOptions] = useState({
@@ -1351,17 +1352,19 @@ export default function App() {
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    const newFiles = Array.from(files);
+
     if (!editingTask) {
-      setPendingFiles(prev => [...prev, ...Array.from(files)]);
+      setPendingFiles(prev => [...prev, ...newFiles]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     setIsUploading(true);
     try {
-      for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < newFiles.length; i++) {
         const formData = new FormData();
-        formData.append('file', files[i]);
+        formData.append('file', newFiles[i]);
         
         const res = await apiFetch(`/api/tasks/${editingTask.id}/attachments`, {
           method: 'POST',
@@ -1390,11 +1393,11 @@ export default function App() {
   };
 
   const handleDeleteAttachment = async (id: string | number) => {
-    if (!window.confirm('Delete this attachment?')) return;
     setIsDeletingAttachment(id);
     try {
       const res = await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
       if (res.ok && editingTask) {
+        setAttachmentToDelete(null);
         fetchAttachments(editingTask.id);
         fetchActivities(editingTask.id);
       }
@@ -2449,7 +2452,7 @@ export default function App() {
                           onChange={(e) => updateSubTaskTitle(st.id, e.target.value)}
                           placeholder="What needs to be done?"
                         />
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex items-center gap-1 transition-opacity ${st.due_date ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           <div className="relative flex items-center">
                             <CalendarDays className="w-3.5 h-3.5 absolute left-2 text-[var(--text-muted)] pointer-events-none" />
                             <input
@@ -2535,27 +2538,58 @@ export default function App() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              type="button"
-                              onClick={() => handleDownload(file)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded"
-                              title="Download"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteAttachment(file.id)}
-                              disabled={isDeletingAttachment === file.id}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded disabled:opacity-50"
-                              title="Delete"
-                            >
-                              {isDeletingAttachment === file.id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                            {attachmentToDelete === file.id ? (
+                              <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDeleteAttachment(file.id);
+                                  }}
+                                  disabled={isDeletingAttachment === file.id}
+                                  className="text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:text-white text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  {isDeletingAttachment === file.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                  Yes
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAttachmentToDelete(null);
+                                  }}
+                                  disabled={isDeletingAttachment === file.id}
+                                  className="text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownload(file)}
+                                  className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded"
+                                  title="Download"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAttachmentToDelete(file.id);
+                                  }}
+                                  className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       ))}

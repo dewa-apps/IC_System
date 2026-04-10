@@ -27,7 +27,7 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
-        includeAssets: ['pwa-icon.svg'],
+        includeAssets: ['pwa-icon.jpg'],
         manifest: {
           name: 'IC Task Manager',
           short_name: 'IC Tasks',
@@ -37,9 +37,9 @@ export default defineConfig(({mode}) => {
           display: 'standalone',
           icons: [
             {
-              src: 'pwa-icon.svg',
+              src: 'pwa-icon.jpg',
               sizes: '192x192 512x512',
-              type: 'image/svg+xml',
+              type: 'image/jpeg',
               purpose: 'any maskable'
             }
           ]

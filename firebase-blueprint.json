@@ -66,6 +66,43 @@
         }
       },
       "required": ["name", "email", "role"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The type of notification."
+        },
+        "recipient": {
+          "type": "string",
+          "description": "The user receiving the notification."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the notification."
+        },
+        "message": {
+          "type": "string",
+          "description": "The message body of the notification."
+        },
+        "task_display_id": {
+          "type": "string",
+          "description": "The display ID of the associated task."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Whether the notification has been read."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the notification was created."
+        }
+      },
+      "required": ["type", "recipient", "title", "message", "read", "created_at"]
     }
   },
   "firestore": {
@@ -80,6 +117,12 @@
         "$ref": "#/entities/User"
       },
       "description": "Stores user profiles."
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Stores user notifications."
     }
   }
 }

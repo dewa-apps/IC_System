@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from './apiInterceptor';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { 
   Layout, 
   CheckSquare,
@@ -39,7 +40,8 @@ import {
   Sun,
   Moon,
   History,
-  Lock
+  Lock,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -700,6 +702,8 @@ export default function App() {
   const currentUserName = currentUser?.displayName || currentUser?.email || 'Unknown User';
   const currentUserPhoto = currentUser?.photoURL;
 
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<{ id: TaskStatus; label: string }[]>([
     { id: 'TODO', label: 'To Do' },
@@ -901,7 +905,34 @@ export default function App() {
     fetchTasks();
     fetchTemplates();
     fetchMetadataOptions();
-  }, [currentUser]);
+    
+    // Subscribe to notifications
+    if (currentUserName) {
+      const q = query(
+        collection(db, 'notifications'), 
+        where('recipient', '==', currentUserName),
+        orderBy('created_at', 'desc')
+      );
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const notifs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setNotifications(notifs);
+      }, (error) => {
+        console.error("Error fetching notifications:", error);
+      });
+      return () => unsubscribe();
+    }
+  }, [currentUser, currentUserName]);
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (e) {
+      console.error("Failed to mark notification as read", e);
+    }
+  };
 
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return '';
@@ -1882,6 +1913,71 @@ export default function App() {
             )}
             
             <div className="flex items-center gap-2">
+              {/* Notifications */}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)] relative"
+                  title="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[var(--bg-surface)]"></span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)]">
+                      <h3 className="font-bold text-sm text-[var(--text-primary)]">Notifications</h3>
+                      <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] px-2 py-0.5 rounded-full">
+                        {notifications.filter(n => !n.read).length} new
+                      </span>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-[var(--text-muted)] text-sm">
+                          No notifications yet
+                        </div>
+                      ) : (
+                        notifications.map(notif => (
+                          <div 
+                            key={notif.id} 
+                            className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-50' : ''}`}
+                            onClick={() => {
+                              if (!notif.read) markNotificationAsRead(notif.id);
+                              // Optional: Navigate to task if needed
+                              // if (notif.task_display_id) { ... }
+                            }}
+                          >
+                            <div className="flex gap-3">
+                              <div className="mt-0.5">
+                                {!notif.read ? (
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
+                                ) : (
+                                  <div className="w-2 h-2 bg-transparent rounded-full mt-1.5"></div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                                  {notif.title}
+                                </p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
+                                  {notif.message}
+                                </p>
+                                <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                                  {formatDateTime(notif.created_at?.toDate ? notif.created_at.toDate().toISOString() : notif.created_at)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button 
                 onClick={toggleTheme}
                 className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"

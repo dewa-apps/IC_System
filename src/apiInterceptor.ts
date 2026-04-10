@@ -76,17 +76,42 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       created_at: serverTimestamp()
     };
     
-    // Simulate sending an email or push notification payload
-    console.log('🔔 [NOTIFICATION PAYLOAD GENERATED]\nSending to:', assignee, '\nPayload:', JSON.stringify({
-      ...notificationPayload,
-      created_at: new Date().toISOString()
-    }, null, 2));
-    
     // Store in Firestore for in-app notifications
     try {
       await addDoc(collection(db, 'notifications'), notificationPayload);
     } catch (e) {
       console.error("Failed to save notification to Firestore", e);
+    }
+
+    // Attempt to send email via Google Apps Script
+    try {
+      // Find the assignee's email from the users collection
+      const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', assignee)));
+      if (!usersSnapshot.empty) {
+        const assigneeEmail = usersSnapshot.docs[0].data().email;
+        
+        // Use the same GAS URL used for attachments, assuming it handles action: 'sendEmail'
+        // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
+        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+        
+        await originalFetch(gasUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify({
+            action: 'sendEmail',
+            to: assigneeEmail,
+            subject: `[IC Task Manager] New Task Assigned: ${displayId}`,
+            body: `Hello ${assignee},\n\n${assignedBy} has assigned you to a new task.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+          })
+        });
+        console.log(`Email notification sent to ${assigneeEmail}`);
+      } else {
+        console.warn(`Could not find email for assignee: ${assignee}`);
+      }
+    } catch (e) {
+      console.error("Failed to send email notification", e);
     }
   };
 

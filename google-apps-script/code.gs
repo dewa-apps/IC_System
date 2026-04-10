@@ -3,6 +3,21 @@ function doPost(e) {
     // Parse data yang dikirim dari aplikasi
     // Kita menggunakan text/plain dari frontend untuk menghindari isu CORS Preflight
     var data = JSON.parse(e.postData.contents);
+    
+    // Jika request adalah untuk mengirim email
+    if (data.action === 'sendEmail') {
+      MailApp.sendEmail({
+        to: data.to,
+        subject: data.subject,
+        body: data.body
+      });
+      return ContentService.createTextOutput(JSON.stringify({ 
+        status: 'success', 
+        message: 'Email sent' 
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Jika request adalah untuk upload file
     var fileData = data.base64; 
     var fileName = data.fileName;
     var mimeType = data.mimeType;

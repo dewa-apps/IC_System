@@ -1,3 +1,19 @@
+function testEmailAuth() {
+  // Fungsi ini HANYA untuk memancing popup izin (authorization) dari Google.
+  // Silakan jalankan fungsi ini SATU KALI dari editor GAS.
+  var email = Session.getActiveUser().getEmail();
+  if (email) {
+    MailApp.sendEmail({
+      to: email,
+      subject: "Test Email Authorization",
+      body: "Jika Anda menerima email ini, berarti izin pengiriman email sudah berhasil diberikan!"
+    });
+    Logger.log("Email test terkirim ke: " + email);
+  } else {
+    Logger.log("Tidak dapat mendeteksi email aktif.");
+  }
+}
+
 function doPost(e) {
   try {
     // Parse data yang dikirim dari aplikasi

@@ -177,7 +177,7 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
       style={style}
       className={`task-card group relative border ${
         isOverdue 
-          ? 'border-[var(--danger-color)] border-opacity-30 bg-[var(--danger-color)] bg-opacity-10 hover:border-[var(--danger-color)]' 
+          ? 'border-[var(--danger-color)] bg-[var(--badge-danger-bg)] hover:border-[var(--danger-color)]' 
           : 'hover:border-[var(--accent-color)]'
       }`}
       onClick={() => onClick(task)}
@@ -426,7 +426,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
         {hasMore && (
           <button 
             onClick={() => setDisplayLimit(prev => prev + 20)}
-            className="w-full py-2 mt-2 text-xs font-bold text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded border border-dashed border-[var(--accent-color)] border-opacity-30 transition-colors"
+            className="w-full py-2 mt-2 text-xs font-bold text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded border border-dashed border-[var(--accent-color)] border-opacity-30 transition-colors"
           >
             Show {Math.min(20, tasks.length - displayLimit)} more... ({tasks.length - displayLimit} remaining)
           </button>
@@ -536,7 +536,7 @@ function TaskListView({
               return (
                 <tr 
                   key={task.id} 
-                  className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors ${isOverdue ? 'bg-[var(--danger-color)] bg-opacity-5' : ''}`}
+                  className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors ${isOverdue ? 'bg-[var(--badge-danger-bg)]' : ''}`}
                   onClick={() => onTaskClick(task)}
                 >
                   <td className="px-4 py-3 text-xs font-bold text-[var(--accent-color)] hover:underline">{task.display_id || `IC-${task.id}`}</td>
@@ -1650,7 +1650,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[var(--bg-body)] flex items-center justify-center p-4 transition-colors duration-200">
         <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-8 max-w-md w-full text-center shadow-lg">
-          <div className="w-16 h-16 bg-[var(--danger-color)] bg-opacity-10 text-[var(--danger-color)] rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-[var(--badge-danger-bg)] text-[var(--danger-color)] rounded-full flex items-center justify-center mx-auto mb-4">
             <Lock className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Access Denied</h1>
@@ -1775,7 +1775,7 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between sticky top-0 z-10 shrink-0 transition-colors duration-200">
+        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between sticky top-0 z-40 shrink-0 transition-colors duration-200">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarVisible(!isSidebarVisible)}
@@ -2055,7 +2055,7 @@ export default function App() {
                 return (
                   <div className={`task-card shadow-xl scale-105 opacity-90 cursor-grabbing border ${
                     isOverdue 
-                      ? 'border-[var(--danger-color)] bg-[var(--danger-color)] bg-opacity-10' 
+                      ? 'border-[var(--danger-color)] bg-[var(--badge-danger-bg)]' 
                       : 'border-[var(--accent-color)] bg-[var(--bg-surface)]'
                   }`}>
                     <p className="text-sm text-[var(--text-primary)] mb-1 leading-tight font-medium pr-6">
@@ -2167,7 +2167,7 @@ export default function App() {
                       {selectedTemplateId && (
                         <div className="flex items-center">
                           {showTemplateDeleteConfirm ? (
-                            <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
+                            <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
                               <span className="text-[10px] font-bold text-[var(--danger-color)] px-1">Delete?</span>
                               <button 
                                 type="button"
@@ -2203,7 +2203,7 @@ export default function App() {
                   {editingTask && (
                     <div className="flex items-center">
                       {isDeletingTask ? (
-                        <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
+                        <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-1 border border-[var(--danger-color)] border-opacity-30">
                           <span className="text-[10px] font-bold text-[var(--danger-color)] px-1">Confirm?</span>
                           <button 
                             type="button"
@@ -2218,7 +2218,7 @@ export default function App() {
                             type="button"
                             onClick={() => setIsDeletingTask(false)}
                             disabled={isDeletingTaskInProgress}
-                            className="text-[var(--text-muted)] text-[10px] font-bold px-2 py-1 rounded hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
+                            className="text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50"
                           >
                             No
                           </button>
@@ -2227,7 +2227,7 @@ export default function App() {
                         <button 
                           type="button"
                           onClick={() => setIsDeletingTask(true)}
-                          className="p-2 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded-md transition-colors"
+                          className="p-2 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded-md transition-colors"
                           title="Delete Task"
                         >
                           <Trash2 className="w-5 h-5" />
@@ -2479,7 +2479,7 @@ export default function App() {
                 <div 
                   className={`mt-8 p-4 border-2 border-dashed rounded-lg transition-colors ${
                     isDragOver 
-                      ? 'border-[var(--border-focus)] bg-[var(--accent-color)] bg-opacity-10' 
+                      ? 'border-[var(--border-focus)] bg-[var(--badge-accent-bg)]' 
                       : 'border-[var(--border-color)] bg-[var(--bg-primary)]'
                   }`}
                   onDragOver={handleDragOverFile}
@@ -2522,7 +2522,7 @@ export default function App() {
                           className="flex items-center justify-between p-2 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded group"
                         >
                           <div className="flex items-center gap-2 overflow-hidden">
-                            <div className="p-1.5 bg-[var(--accent-color)] bg-opacity-10 rounded">
+                            <div className="p-1.5 bg-[var(--badge-accent-bg)] rounded">
                               <FileText className="w-4 h-4 text-[var(--accent-color)]" />
                             </div>
                             <div className="overflow-hidden">
@@ -2538,7 +2538,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDownload(file)}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded"
+                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded"
                               title="Download"
                             >
                               <Download className="w-3.5 h-3.5" />
@@ -2547,7 +2547,7 @@ export default function App() {
                               type="button"
                               onClick={() => handleDeleteAttachment(file.id)}
                               disabled={isDeletingAttachment === file.id}
-                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded disabled:opacity-50"
+                              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded disabled:opacity-50"
                               title="Delete"
                             >
                               {isDeletingAttachment === file.id ? (
@@ -2571,7 +2571,7 @@ export default function App() {
                           className="flex items-center justify-between p-2 bg-[var(--bg-surface)] border border-[var(--accent-color)] border-opacity-30 border-dashed rounded group"
                         >
                           <div className="flex items-center gap-2 overflow-hidden">
-                            <div className="p-1.5 bg-[var(--accent-color)] bg-opacity-10 rounded">
+                            <div className="p-1.5 bg-[var(--badge-accent-bg)] rounded">
                               <FileText className="w-4 h-4 text-[var(--accent-color)]" />
                             </div>
                             <div className="overflow-hidden">
@@ -2586,7 +2586,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => removePendingFile(index)}
-                            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded"
+                            className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded"
                             title="Remove"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2639,7 +2639,7 @@ export default function App() {
                                     </span>
                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                       {commentToDelete === comment.id ? (
-                                        <div className="flex items-center gap-1 bg-[var(--danger-color)] bg-opacity-10 rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
+                                        <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
                                           <button 
                                             type="button"
                                             onClick={(e) => {
@@ -2675,7 +2675,7 @@ export default function App() {
                                               setEditingCommentId(comment.id);
                                               setEditingCommentContent(comment.content);
                                             }}
-                                            className="p-1 text-[var(--accent-color)] hover:bg-[var(--accent-color)] hover:bg-opacity-10 rounded transition-all"
+                                            className="p-1 text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded transition-all"
                                             title="Edit"
                                           >
                                             <Edit2 className="w-3 h-3" />
@@ -2687,7 +2687,7 @@ export default function App() {
                                               e.stopPropagation();
                                               setCommentToDelete(comment.id);
                                             }}
-                                            className="p-1 text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:bg-opacity-10 rounded transition-all"
+                                            className="p-1 text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded transition-all"
                                             title="Delete"
                                           >
                                             <Trash2 className="w-3 h-3" />

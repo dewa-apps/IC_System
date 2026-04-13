@@ -117,6 +117,83 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     }
   };
 
+  const triggerCommentNotification = async (taskId: string, commentContent: string, commentedBy: string) => {
+    try {
+      // 1. Get the task details (to know the assignee and displayId)
+      const taskDoc = await getDoc(doc(db, 'tasks', taskId));
+      if (!taskDoc.exists()) return;
+      const taskData = taskDoc.data();
+      const assignee = taskData.assignee;
+      const displayId = taskData.display_id || taskId;
+      const taskTitle = taskData.title;
+
+      // 2. Get all comments for this task to find other commenters
+      const commentsSnapshot = await getDocs(query(collection(db, 'comments'), where('task_id', '==', taskId)));
+      const commenters = new Set<string>();
+      commentsSnapshot.docs.forEach(doc => {
+        const author = doc.data().author;
+        if (author && author !== commentedBy) {
+          commenters.add(author);
+        }
+      });
+
+      // 3. Determine who needs to be notified
+      const usersToNotify = new Set<string>(commenters);
+      if (assignee && assignee !== commentedBy) {
+        usersToNotify.add(assignee);
+      }
+
+      // 4. Send notifications to each user
+      for (const user of usersToNotify) {
+        const notificationPayload = {
+          type: 'NEW_COMMENT',
+          recipient: user,
+          title: `New Comment on Task: ${displayId}`,
+          message: `${commentedBy} commented: "${commentContent.substring(0, 50)}${commentContent.length > 50 ? '...' : ''}"`,
+          task_display_id: displayId,
+          read: false,
+          created_at: serverTimestamp()
+        };
+        
+        // Store in Firestore for in-app notifications
+        try {
+          await addDoc(collection(db, 'notifications'), notificationPayload);
+        } catch (e) {
+          console.error("Failed to save notification to Firestore", e);
+        }
+
+        // Attempt to send email
+        try {
+          const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', user)));
+          if (!usersSnapshot.empty) {
+            const userEmail = usersSnapshot.docs[0].data().email;
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+            
+            const response = await originalFetch(gasUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+              },
+              body: JSON.stringify({
+                action: 'sendEmail',
+                to: userEmail,
+                subject: `[IC Task Manager] New Comment on Task: ${displayId}`,
+                body: `Hello ${user},\n\n${commentedBy} added a new comment to task "${taskTitle}" (ID: ${displayId}).\n\nComment:\n"${commentContent}"\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+              })
+            });
+            
+            const resultText = await response.text();
+            console.log(`Email notification sent to ${userEmail}. GAS Response:`, resultText);
+          }
+        } catch (e) {
+          console.error("Failed to send email notification", e);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to process comment notifications", e);
+    }
+  };
+
   try {
     // --- METADATA ---
     if (path === 'metadata/dropdowns' && method === 'GET') {
@@ -347,6 +424,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         created_at: serverTimestamp()
       });
       await logActivity(taskId, "Added comment", body.content.substring(0, 50));
+      
+      // Trigger notifications for the new comment
+      await triggerCommentNotification(taskId, body.content, userName);
+      
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }

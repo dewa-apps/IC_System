@@ -1965,7 +1965,7 @@ export default function App() {
 
           {/* Bottom Row: Filters (Only for Tasks) */}
           {currentView === 'tasks' && (
-            <div className="px-4 md:px-6 py-2.5 border-t border-[var(--border-color)] flex items-center justify-between gap-4 overflow-x-auto bg-[var(--bg-surface)] scrollbar-hide">
+            <div className="px-4 md:px-6 py-2.5 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-surface)]">
               <div className="flex items-center gap-2 shrink-0">
                 {/* Status & Priority Filters */}
                 <div className="relative group">

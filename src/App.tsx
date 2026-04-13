@@ -2052,6 +2052,20 @@ export default function App() {
                   />
                 </div>
 
+                {(selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedPriorities.length > 0) && (
+                  <button 
+                    onClick={() => {
+                      setSelectedAssignees([]);
+                      setSelectedStatuses([]);
+                      setSelectedPriorities([]);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-[var(--accent-color)] hover:underline font-medium whitespace-nowrap"
+                  >
+                    Clear all filters
+                  </button>
+                )}
+
                 {/* Assignees */}
                 <div className="flex items-center -space-x-2 mr-2">
                   {hasUnassignedTasks && (
@@ -2089,19 +2103,6 @@ export default function App() {
                       </button>
                     );
                   })}
-                  {(selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedPriorities.length > 0) && (
-                    <button 
-                      onClick={() => {
-                        setSelectedAssignees([]);
-                        setSelectedStatuses([]);
-                        setSelectedPriorities([]);
-                        setCurrentPage(1);
-                      }}
-                      className="ml-4 text-xs text-[var(--accent-color)] hover:underline font-medium whitespace-nowrap"
-                    >
-                      Clear all filters
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

@@ -1,4 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <rect width="24" height="24" rx="4" fill="#0747A6"/>
-  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="white" font-size="10" font-weight="bold" font-family="sans-serif">IC</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="silverGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="25%" stop-color="#b0b0b0"/>
+      <stop offset="50%" stop-color="#e8e8e8"/>
+      <stop offset="75%" stop-color="#707070"/>
+      <stop offset="100%" stop-color="#3a3a3a"/>
+    </linearGradient>
+
+    <filter id="depthShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="300" height="300" rx="40" fill="#181818" />
+
+  <g filter="url(#depthShadow)" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.4">
+    
+    <path d="M 38 85 
+             L 38 215 
+             L 58 226.6 
+             L 58 133.4 
+             L 80 239.4 
+             L 100 251 
+             L 100 49 
+             L 80 60.6 
+             L 80 180 
+             L 58 73.4 Z" 
+          fill="url(#silverGradient)" />
+
+    <path d="M 112 42 
+             L 150 20 
+             L 188 42 
+             L 188 67 
+             L 150 45 
+             L 132 55.4 
+             L 132 137.5 
+             L 180 137.5 
+             L 180 162.5 
+             L 132 162.5 
+             L 132 244.6 
+             L 150 255 
+             L 188 233 
+             L 188 258 
+             L 150 280 
+             L 112 258 Z" 
+          fill="url(#silverGradient)" />
+
+    <path d="M 200 49 
+             L 262 85 
+             L 262 215 
+             L 200 251 Z 
+             M 220 80 
+             L 220 220 
+             L 242 207 
+             L 242 93 Z" 
+          fill="url(#silverGradient)" fill-rule="evenodd" />
+  </g>
 </svg>

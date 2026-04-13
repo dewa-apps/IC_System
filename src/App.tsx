@@ -446,7 +446,9 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
 
 interface TaskListViewProps {
   tasks: Task[];
+  users: AppUser[];
   onTaskClick: (task: Task) => void;
+  onInlineUpdate: (taskId: string, field: string, value: any) => void;
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
   currentPage: number;
   totalPages: number;
@@ -460,7 +462,9 @@ interface TaskListViewProps {
 
 function TaskListView({ 
   tasks, 
+  users,
   onTaskClick, 
+  onInlineUpdate,
   getPriorityIcon,
   currentPage,
   totalPages,
@@ -479,11 +483,11 @@ function TaskListView({
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col h-full transition-colors duration-200">
       <div className="overflow-x-auto flex-1">
-        <table className="w-full text-left border-collapse min-w-[800px]">
+        <table className="w-max min-w-full text-left border-collapse whitespace-nowrap">
           <thead>
             <tr className="bg-[var(--bg-primary)] border-b border-[var(--border-color)]">
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-24 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
                 onClick={() => onSort('id')}
               >
                 <div className="flex items-center gap-1">
@@ -499,7 +503,7 @@ function TaskListView({
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
                 onClick={() => onSort('status')}
               >
                 <div className="flex items-center gap-1">
@@ -507,17 +511,17 @@ function TaskListView({
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
                 onClick={() => onSort('priority')}
               >
                 <div className="flex items-center gap-1">
                   Priority <SortIcon field="priority" />
                 </div>
               </th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-40">Assignee</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-40">Created By</th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Assignee</th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Created By</th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
                 onClick={() => onSort('due_date')}
               >
                 <div className="flex items-center gap-1">
@@ -548,20 +552,37 @@ function TaskListView({
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] px-2 py-1 bg-[var(--border-color)] text-[var(--text-secondary)] rounded font-bold uppercase whitespace-nowrap">
-                      {task.status.replace('_', ' ')}
-                    </span>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={task.status}
+                      onChange={(e) => onInlineUpdate(task.id, 'status', e.target.value)}
+                      className="text-[10px] px-2 py-1 bg-[var(--border-color)] text-[var(--text-secondary)] rounded font-bold uppercase whitespace-nowrap outline-none cursor-pointer hover:bg-[var(--bg-secondary)] border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
+                    >
+                      <option value="TODO">TODO</option>
+                      <option value="IN_PROGRESS">IN PROGRESS</option>
+                      <option value="REVIEW">REVIEW</option>
+                      <option value="DONE">DONE</option>
+                      <option value="CLOSED">CLOSED</option>
+                    </select>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {getPriorityIcon(task.priority)}
-                      <span className="text-xs text-[var(--text-secondary)]">{task.priority}</span>
+                      <select
+                        value={task.priority}
+                        onChange={(e) => onInlineUpdate(task.id, 'priority', e.target.value)}
+                        className="text-xs text-[var(--text-secondary)] bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
+                      >
+                        <option value="URGENT">URGENT</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="LOW">LOW</option>
+                      </select>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    {task.assignee ? (
-                      <div className="flex items-center gap-2">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      {task.assignee ? (
                         <div 
                           className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
                           style={{ 
@@ -571,11 +592,22 @@ function TaskListView({
                         >
                           {getInitials(task.assignee)}
                         </div>
-                        <span className="text-xs text-[var(--text-secondary)] truncate">{task.assignee}</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)] italic">Unassigned</span>
-                    )}
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center shrink-0">
+                          <User className="w-3 h-3 text-[var(--text-muted)]" />
+                        </div>
+                      )}
+                      <select
+                        value={task.assignee || ''}
+                        onChange={(e) => onInlineUpdate(task.id, 'assignee', e.target.value || null)}
+                        className={`text-xs bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none ${!task.assignee ? 'text-[var(--text-muted)] italic' : 'text-[var(--text-secondary)]'}`}
+                      >
+                        <option value="">Unassigned</option>
+                        {users.map(u => (
+                          <option key={u.id} value={u.name}>{u.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {task.authorName ? (
@@ -1516,6 +1548,24 @@ export default function App() {
     });
   }, []);
 
+  const handleInlineUpdate = async (taskId: string, field: string, value: any) => {
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
+    
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ [field]: value })
+      });
+      
+      if (!res.ok) throw new Error('Failed to update task');
+    } catch (error) {
+      console.error('Error updating task inline:', error);
+      // Revert on failure by re-fetching
+      fetchTasks();
+    }
+  };
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -1564,6 +1614,7 @@ export default function App() {
   }, [activeTask, tasks, syncTaskStatus]);
 
   const uniqueAssignees = Array.from(new Set(tasks.map(t => t.assignee).filter(Boolean))) as string[];
+  const hasUnassignedTasks = tasks.some(t => !t.assignee);
   const uniqueCategories = metadataOptions.categories;
   const uniqueBrands = metadataOptions.brands;
   const uniqueRequestors = metadataOptions.requestors;
@@ -1577,7 +1628,9 @@ export default function App() {
       t.requestor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.category?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesAssignee = selectedAssignees.length === 0 || (t.assignee && selectedAssignees.includes(t.assignee));
+    const matchesAssignee = selectedAssignees.length === 0 || 
+      (t.assignee && selectedAssignees.includes(t.assignee)) ||
+      (!t.assignee && selectedAssignees.includes('Unassigned'));
     const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
     const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority);
     
@@ -1787,77 +1840,186 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-4 md:px-6 py-4 flex items-center justify-between sticky top-0 z-40 shrink-0 transition-colors duration-200 flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsSidebarVisible(!isSidebarVisible)}
-              className="p-1.5 hover:bg-[var(--bg-secondary)] rounded transition-colors text-[var(--text-secondary)]"
-              title={isSidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">
-              {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : 'Tasks'}
-            </h2>
-          </div>
-          <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
-            {currentView === 'tasks' && (
-              <>
-                {/* Status & Priority Filters */}
-                <div className="flex items-center gap-2">
-                  <div className="relative group">
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
-                      <Filter className="w-3.5 h-3.5" />
-                      Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}
-                    </button>
-                    <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
-                      {STATUS_COLUMNS.map(status => (
-                        <label key={status.id} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedStatuses.includes(status.id)}
-                            onChange={() => {
-                              setSelectedStatuses(prev => 
-                                prev.includes(status.id) ? prev.filter(s => s !== status.id) : [...prev, status.id]
-                              );
-                              setCurrentPage(1);
-                            }}
-                            className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
-                          />
-                          <span className="text-xs text-[var(--text-primary)]">{status.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+        <header className="bg-[var(--bg-surface)] border-b border-[var(--border-color)] flex flex-col sticky top-0 z-40 shrink-0 transition-colors duration-200">
+          {/* Top Row: Title, Search, Actions */}
+          <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 shrink-0">
+              <button 
+                onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+                className="p-1.5 hover:bg-[var(--bg-secondary)] rounded transition-colors text-[var(--text-secondary)]"
+                title={isSidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">
+                {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : 'Tasks'}
+              </h2>
+            </div>
+            
+            <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
+              {currentView === 'tasks' && (
+                <div className="relative hidden md:block max-w-md w-full ml-4">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                  <input 
+                    type="text" 
+                    placeholder="Search tasks..."
+                    className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              )}
 
-                  <div className="relative group">
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}
-                    </button>
-                    <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
-                      {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
-                        <label key={priority} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedPriorities.includes(priority)}
-                            onChange={() => {
-                              setSelectedPriorities(prev => 
-                                prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
-                              );
-                              setCurrentPage(1);
-                            }}
-                            className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
-                          />
-                          <span className="text-xs text-[var(--text-primary)]">{priority}</span>
-                        </label>
-                      ))}
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {/* Notifications */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)] relative"
+                    title="Notifications"
+                  >
+                    <Bell className="w-5 h-5" />
+                    {notifications.filter(n => !n.read).length > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[var(--bg-surface)]"></span>
+                    )}
+                  </button>
+
+                  {showNotifications && (
+                    <div className="absolute right-0 mt-2 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)]">
+                        <h3 className="font-bold text-sm text-[var(--text-primary)]">Notifications</h3>
+                        <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] px-2 py-0.5 rounded-full">
+                          {notifications.filter(n => !n.read).length} new
+                        </span>
+                      </div>
+                      <div className="max-h-96 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="p-8 text-center text-[var(--text-muted)] text-sm">
+                            No notifications yet
+                          </div>
+                        ) : (
+                          notifications.map(notif => (
+                            <div 
+                              key={notif.id} 
+                              className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-50' : ''}`}
+                              onClick={() => {
+                                if (!notif.read) markNotificationAsRead(notif.id);
+                              }}
+                            >
+                              <div className="flex gap-3">
+                                <div className="mt-0.5">
+                                  {!notif.read ? (
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
+                                  ) : (
+                                    <div className="w-2 h-2 bg-transparent rounded-full mt-1.5"></div>
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                                    {notif.title}
+                                  </p>
+                                  <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
+                                    {notif.message}
+                                  </p>
+                                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                                    {formatDateTime(notif.created_at?.toDate ? notif.created_at.toDate().toISOString() : notif.created_at)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={toggleTheme}
+                  className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
+                  title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                >
+                  {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                </button>
+                <button 
+                  onClick={() => {
+                    import('./firebase').then(({ logOut }) => logOut());
+                  }}
+                  className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
+                  title="Sign Out"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                </button>
+                {currentView === 'tasks' && (
+                  <button 
+                    onClick={() => openModal()}
+                    className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ml-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Create</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Row: Filters (Only for Tasks) */}
+          {currentView === 'tasks' && (
+            <div className="px-4 md:px-6 py-2.5 border-t border-[var(--border-color)] flex items-center justify-between gap-4 overflow-x-auto bg-[var(--bg-surface)] scrollbar-hide">
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Status & Priority Filters */}
+                <div className="relative group">
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+                    <Filter className="w-3.5 h-3.5" />
+                    Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}
+                  </button>
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                    {STATUS_COLUMNS.map(status => (
+                      <label key={status.id} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedStatuses.includes(status.id)}
+                          onChange={() => {
+                            setSelectedStatuses(prev => 
+                              prev.includes(status.id) ? prev.filter(s => s !== status.id) : [...prev, status.id]
+                            );
+                            setCurrentPage(1);
+                          }}
+                          className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                        />
+                        <span className="text-xs text-[var(--text-primary)]">{status.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}
+                  </button>
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                    {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
+                      <label key={priority} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedPriorities.includes(priority)}
+                          onChange={() => {
+                            setSelectedPriorities(prev => 
+                              prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
+                            );
+                            setCurrentPage(1);
+                          }}
+                          className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                        />
+                        <span className="text-xs text-[var(--text-primary)]">{priority}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
 
                 {/* View Toggle */}
-                <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+                <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)] ml-2">
                   <button 
                     onClick={() => setViewMode('board')}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'board' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
@@ -1875,8 +2037,36 @@ export default function App() {
                     <span className="hidden sm:inline">List</span>
                   </button>
                 </div>
+              </div>
 
+              <div className="flex items-center gap-4 shrink-0">
+                {/* Mobile Search */}
+                <div className="relative md:hidden w-40 sm:w-48">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                  <input 
+                    type="text" 
+                    placeholder="Search..."
+                    className="pl-10 pr-4 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                {/* Assignees */}
                 <div className="flex items-center -space-x-2 mr-2">
+                  {hasUnassignedTasks && (
+                    <button
+                      onClick={() => toggleAssigneeFilter('Unassigned')}
+                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all ${
+                        selectedAssignees.includes('Unassigned')
+                          ? 'ring-2 ring-blue-400 scale-110 z-10 border-[var(--bg-surface)]'
+                          : 'border-[var(--bg-surface)] hover:scale-105'
+                      } bg-[var(--bg-secondary)] text-[var(--text-muted)]`}
+                      title="Unassigned"
+                    >
+                      <User className="w-4 h-4" />
+                    </button>
+                  )}
                   {uniqueAssignees.map((assignee) => {
                     const colors = getAvatarColor(assignee);
                     const isSelected = selectedAssignees.includes(assignee);
@@ -1913,113 +2103,9 @@ export default function App() {
                     </button>
                   )}
                 </div>
-
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                  <input 
-                    type="text" 
-                    placeholder="Search tasks..."
-                    className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-32 sm:w-48 md:w-64 text-[var(--text-primary)] transition-all"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-            
-            <div className="flex items-center gap-2">
-              {/* Notifications */}
-              <div className="relative">
-                <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)] relative"
-                  title="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {notifications.filter(n => !n.read).length > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[var(--bg-surface)]"></span>
-                  )}
-                </button>
-
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)]">
-                      <h3 className="font-bold text-sm text-[var(--text-primary)]">Notifications</h3>
-                      <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] px-2 py-0.5 rounded-full">
-                        {notifications.filter(n => !n.read).length} new
-                      </span>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-8 text-center text-[var(--text-muted)] text-sm">
-                          No notifications yet
-                        </div>
-                      ) : (
-                        notifications.map(notif => (
-                          <div 
-                            key={notif.id} 
-                            className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-50' : ''}`}
-                            onClick={() => {
-                              if (!notif.read) markNotificationAsRead(notif.id);
-                              // Optional: Navigate to task if needed
-                              // if (notif.task_display_id) { ... }
-                            }}
-                          >
-                            <div className="flex gap-3">
-                              <div className="mt-0.5">
-                                {!notif.read ? (
-                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
-                                ) : (
-                                  <div className="w-2 h-2 bg-transparent rounded-full mt-1.5"></div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                                  {notif.title}
-                                </p>
-                                <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
-                                  {notif.message}
-                                </p>
-                                <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                                  {formatDateTime(notif.created_at?.toDate ? notif.created_at.toDate().toISOString() : notif.created_at)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
-
-              <button 
-                onClick={toggleTheme}
-                className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
-                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-              >
-                {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
-              </button>
-              <button 
-                onClick={() => {
-                  import('./firebase').then(({ logOut }) => logOut());
-                }}
-                className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
-                title="Sign Out"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-              </button>
-              {currentView === 'tasks' && (
-                <button 
-                  onClick={() => openModal()}
-                  className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Create</span>
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </header>
 
         {currentView === 'settings' ? (
@@ -2104,7 +2190,9 @@ export default function App() {
         ) : (
           <TaskListView 
             tasks={paginatedTasks} 
+            users={users}
             onTaskClick={openModal} 
+            onInlineUpdate={handleInlineUpdate}
             getPriorityIcon={getPriorityIcon}
             currentPage={currentPage}
             totalPages={totalPages}

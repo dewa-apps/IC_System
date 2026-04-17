@@ -64,7 +64,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
   };
 
   const triggerAssignmentNotification = async (assignee: string, taskTitle: string, displayId: string, assignedBy: string) => {
-    if (!assignee) return;
+    if (!assignee || assignee === assignedBy) return;
     
     const notificationPayload = {
       type: 'TASK_ASSIGNMENT',
@@ -191,6 +191,58 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       }
     } catch (e) {
       console.error("Failed to process comment notifications", e);
+    }
+  };
+
+  const triggerTaskModificationNotification = async (
+    authorName: string, 
+    taskTitle: string, 
+    displayId: string, 
+    actionTaken: 'edited' | 'deleted', 
+    actionBy: string
+  ) => {
+    if (!authorName || authorName === actionBy) return;
+    
+    const actionText = actionTaken === 'deleted' ? 'deleted' : 'updated';
+    
+    const notificationPayload = {
+      type: 'TASK_MODIFICATION',
+      recipient: authorName,
+      title: `Task ${displayId} was ${actionText}`,
+      message: `${actionBy} has ${actionText} your task: "${taskTitle}"`,
+      task_display_id: displayId,
+      read: false,
+      created_at: serverTimestamp()
+    };
+    
+    try {
+      await addDoc(collection(db, 'notifications'), notificationPayload);
+    } catch (e) {
+      console.error("Failed to save notification to Firestore", e);
+    }
+
+    try {
+      const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', authorName)));
+      if (!usersSnapshot.empty) {
+        const authorEmail = usersSnapshot.docs[0].data().email;
+        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+        
+        const response = await originalFetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'sendEmail',
+            to: authorEmail,
+            subject: `[IC Task Manager] Task ${displayId} ${actionText}`,
+            body: `Hello ${authorName},\n\n${actionBy} has ${actionText} the task you created.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details (if applicable).\n\nBest regards,\nIC System`
+          })
+        });
+        
+        const resultText = await response.text();
+        console.log(`Email notification sent to ${authorEmail}. GAS Response:`, resultText);
+      }
+    } catch (e) {
+      console.error("Failed to send email notification", e);
     }
   };
 
@@ -362,12 +414,13 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       });
-      await logActivity(docRef.id, "Created task", `Title: ${body.title}`);
-      await updateDropdownMetadata(body);
       
-      if (body.assignee) {
-        await triggerAssignmentNotification(body.assignee, body.title, displayId, userName);
-      }
+      // Run side-effects in background without awaiting them to speed up response
+      Promise.all([
+        logActivity(docRef.id, "Created task", `Title: ${body.title}`),
+        updateDropdownMetadata(body),
+        body.assignee ? triggerAssignmentNotification(body.assignee, body.title, displayId, userName) : Promise.resolve()
+      ]).catch(err => console.error("Error in task creation side-effects:", err));
       
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
@@ -387,20 +440,42 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           ...body,
           updated_at: serverTimestamp()
         });
-        await logActivity(taskId, "Updated task", "Task details updated");
-        await updateDropdownMetadata(body);
         
-        if (body.assignee && oldData && oldData.assignee !== body.assignee) {
+        // Background tasks
+        const bgTasks: Promise<any>[] = [
+          logActivity(taskId, "Updated task", "Task details updated"),
+          updateDropdownMetadata(body)
+        ];
+        
+        if (oldData) {
           const displayId = oldData.display_id || `IC-${taskId}`;
           const taskTitle = body.title || oldData.title;
-          await triggerAssignmentNotification(body.assignee, taskTitle, displayId, userName);
+
+          if (body.assignee && oldData.assignee !== body.assignee) {
+            bgTasks.push(triggerAssignmentNotification(body.assignee, taskTitle, displayId, userName));
+          }
+
+          // Trigger modification notification to the author
+          if (oldData.authorName && oldData.authorName !== userName) {
+            bgTasks.push(triggerTaskModificationNotification(oldData.authorName, taskTitle, displayId, 'edited', userName));
+          }
         }
+        
+        Promise.all(bgTasks).catch(err => console.error("Error in task update side effects", err));
         
         const updatedDoc = await getDoc(taskRef);
         return new Response(JSON.stringify(formatDoc(updatedDoc)), { status: 200 });
       }
       
       if (method === 'DELETE') {
+        const taskDoc = await getDoc(taskRef);
+        if (taskDoc.exists()) {
+          const taskData = taskDoc.data();
+          const displayId = taskData.display_id || `IC-${taskId}`;
+          if (taskData.authorName && taskData.authorName !== userName) {
+            triggerTaskModificationNotification(taskData.authorName, taskData.title, displayId, 'deleted', userName).catch(err => console.error(err));
+          }
+        }
         await deleteDoc(taskRef);
         return new Response(null, { status: 204 });
       }
@@ -423,10 +498,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         content: body.content,
         created_at: serverTimestamp()
       });
-      await logActivity(taskId, "Added comment", body.content.substring(0, 50));
       
-      // Trigger notifications for the new comment
-      await triggerCommentNotification(taskId, body.content, userName);
+      // Run side-effects in background
+      Promise.all([
+        logActivity(taskId, "Added comment", body.content.substring(0, 50)),
+        triggerCommentNotification(taskId, body.content, userName)
+      ]).catch(err => console.error("Error in comment side effects", err));
       
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
@@ -436,12 +513,39 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const commentId = segments[1];
       const commentRef = doc(db, 'comments', commentId);
       
-      if (method === 'DELETE') {
-        const commentDoc = await getDoc(commentRef);
-        if (commentDoc.exists()) {
-          await logActivity(commentDoc.data().task_id, "Deleted comment", "Comment deleted");
-          await deleteDoc(commentRef);
+      const commentDoc = await getDoc(commentRef);
+      if (!commentDoc.exists()) {
+        return new Response("Comment not found", { status: 404 });
+      }
+
+      // Check permissions
+      // We assume userName is available from the scope outside
+      const isAuthor = commentDoc.data().author === userName;
+      
+      let isAdmin = false;
+      if (userId) {
+        // Try to get user role
+        // Since email is not explicitly available as a clean variable here without fetching, 
+        // we'll fetch based on uid/email or just do a generic check if they are author. 
+        // We will fetch the user doc to get the role if possible.
+        // Actually userName could be mapped back, but email is safer. 
+        try {
+           const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser?.email || ''));
+           if (currentUserDoc.exists() && currentUserDoc.data().role === 'admin') {
+             isAdmin = true;
+           }
+        } catch (e) {
+           console.error("Error checking user role", e);
         }
+      }
+
+      if (!isAuthor) {
+        return new Response("Forbidden: You can only modify your own comments", { status: 403 });
+      }
+      
+      if (method === 'DELETE') {
+        await logActivity(commentDoc.data().task_id, "Deleted comment", "Comment deleted");
+        await deleteDoc(commentRef);
         return new Response(null, { status: 204 });
       }
       

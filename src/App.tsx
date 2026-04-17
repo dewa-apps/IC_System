@@ -2780,64 +2780,66 @@ export default function App() {
                                         <span className="italic opacity-70">(edited)</span>
                                       )}
                                     </span>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      {commentToDelete === comment.id ? (
-                                        <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
-                                          <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              handleDeleteComment(comment.id);
-                                            }}
-                                            disabled={isDeletingComment}
-                                            className="bg-[var(--danger-color)] text-[var(--text-on-accent)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--danger-hover)] disabled:opacity-50"
-                                          >
-                                            {isDeletingComment ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Delete'}
-                                          </button>
-                                          <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              setCommentToDelete(null);
-                                            }}
-                                            disabled={isDeletingComment}
-                                            className="text-[var(--text-muted)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50"
-                                          >
-                                            No
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              setEditingCommentId(comment.id);
-                                              setEditingCommentContent(comment.content);
-                                            }}
-                                            className="p-1 text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded transition-all"
-                                            title="Edit"
-                                          >
-                                            <Edit2 className="w-3 h-3" />
-                                          </button>
-                                          <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              setCommentToDelete(comment.id);
-                                            }}
-                                            className="p-1 text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded transition-all"
-                                            title="Delete"
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
+                                    {(comment.author === currentUserName || comment.author === myNameInDb) && (
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {commentToDelete === comment.id ? (
+                                          <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleDeleteComment(comment.id);
+                                              }}
+                                              disabled={isDeletingComment}
+                                              className="bg-[var(--danger-color)] text-[var(--text-on-accent)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--danger-hover)] disabled:opacity-50"
+                                            >
+                                              {isDeletingComment ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Delete'}
+                                            </button>
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setCommentToDelete(null);
+                                              }}
+                                              disabled={isDeletingComment}
+                                              className="text-[var(--text-muted)] text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+                                            >
+                                              No
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setEditingCommentId(comment.id);
+                                                setEditingCommentContent(comment.content);
+                                              }}
+                                              className="p-1 text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded transition-all"
+                                              title="Edit"
+                                            >
+                                              <Edit2 className="w-3 h-3" />
+                                            </button>
+                                            <button 
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setCommentToDelete(comment.id);
+                                              }}
+                                              className="p-1 text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded transition-all"
+                                              title="Delete"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 {editingCommentId === comment.id ? (

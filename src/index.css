@@ -118,7 +118,7 @@ body {
 
 .kanban-column {
   background-color: var(--bg-secondary);
-  @apply rounded-lg p-3 flex flex-col gap-3 min-h-[500px] w-full transition-colors duration-200;
+  @apply rounded-lg p-3 flex flex-col gap-3 min-h-[150px] w-full transition-colors duration-200;
 }
 
 .task-card {

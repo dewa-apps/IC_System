@@ -1,7 +1,7 @@
 import { db, auth } from './firebase';
 import { 
   collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, 
-  query, where, orderBy, limit, serverTimestamp, setDoc, arrayUnion
+  query, where, orderBy, limit, serverTimestamp, setDoc, arrayUnion, runTransaction
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -37,13 +37,13 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
   const logActivity = async (taskId: string, action: string, details: string) => {
     if (!userId) return;
-    await addDoc(collection(db, 'activity_log'), {
+    return addDoc(collection(db, 'activity_log'), {
       task_id: taskId,
       user: userName,
       action,
       details,
       created_at: serverTimestamp()
-    });
+    }).catch(e => console.error("Failed to log activity", e));
   };
 
   const updateDropdownMetadata = async (body: any) => {
@@ -55,11 +55,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     if (body.division) updates.divisions = arrayUnion(body.division);
     
     if (Object.keys(updates).length > 0) {
-      try {
-        await setDoc(doc(db, 'metadata', 'dropdowns'), updates, { merge: true });
-      } catch (e) {
-        console.error("Failed to update dropdown metadata", e);
-      }
+      return setDoc(doc(db, 'metadata', 'dropdowns'), updates, { merge: true }).catch(e => console.error("Failed to update dropdown metadata", e));
     }
   };
 
@@ -393,36 +389,48 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       if (!userId) throw new Error("Unauthorized");
       const body = JSON.parse(init?.body as string);
       
-      // Generate sequential ID
-      const qLatest = query(collection(db, 'tasks'), orderBy('task_number', 'desc'), limit(1));
-      const latestSnapshot = await getDocs(qLatest);
-      let nextNum = 1;
-      if (!latestSnapshot.empty) {
-        const latestTask = latestSnapshot.docs[0].data();
-        if (typeof latestTask.task_number === 'number') {
-          nextNum = latestTask.task_number + 1;
-        }
-      }
-      const displayId = `IC-${String(nextNum).padStart(5, '0')}`;
+      // Use Firestore transaction for safe sequential ID generation
+      const dbInstance = db;
+      
+      const newDocId = doc(collection(dbInstance, 'tasks')).id;
+      const taskRef = doc(dbInstance, 'tasks', newDocId);
+      const metadataRef = doc(dbInstance, 'metadata', 'taskSequence');
 
-      const docRef = await addDoc(collection(db, 'tasks'), {
-        ...body,
-        authorId: userId,
-        authorName: userName,
-        task_number: nextNum,
-        display_id: displayId,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
+      let nextNum = 1;
+      let displayId = '';
+
+      await runTransaction(dbInstance, async (transaction) => {
+        const metadataDoc = await transaction.get(metadataRef);
+        
+        if (!metadataDoc.exists()) {
+          nextNum = 1;
+          transaction.set(metadataRef, { lastNumber: 1 });
+        } else {
+          nextNum = metadataDoc.data().lastNumber + 1;
+          transaction.update(metadataRef, { lastNumber: nextNum });
+        }
+        
+        displayId = `IC-${String(nextNum).padStart(5, '0')}`;
+        
+        transaction.set(taskRef, {
+          ...body,
+          authorId: userId,
+          authorName: userName,
+          task_number: nextNum,
+          display_id: displayId,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
       });
       
       // Run side-effects in background without awaiting them to speed up response
       Promise.all([
-        logActivity(docRef.id, "Created task", `Title: ${body.title}`),
+        logActivity(newDocId, "Created task", `Title: ${body.title}`),
         updateDropdownMetadata(body),
         body.assignee ? triggerAssignmentNotification(body.assignee, body.title, displayId, userName) : Promise.resolve()
       ]).catch(err => console.error("Error in task creation side-effects:", err));
       
-      const newDoc = await getDoc(docRef);
+      const newDoc = await getDoc(taskRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }
 
@@ -544,7 +552,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       }
       
       if (method === 'DELETE') {
-        await logActivity(commentDoc.data().task_id, "Deleted comment", "Comment deleted");
+        // Run log in background
+        logActivity(commentDoc.data().task_id, "Deleted comment", "Comment deleted").catch(e => console.error(e));
         await deleteDoc(commentRef);
         return new Response(null, { status: 204 });
       }
@@ -555,8 +564,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           content: body.content,
           updated_at: serverTimestamp()
         });
+        
         const updatedDoc = await getDoc(commentRef);
-        await logActivity(updatedDoc.data()?.task_id, "Edited comment", "Comment edited");
+        // Run log in background
+        logActivity(updatedDoc.data()?.task_id, "Edited comment", "Comment edited").catch(e => console.error(e));
+        
         return new Response(JSON.stringify(formatDoc(updatedDoc)), { status: 200 });
       }
     }
@@ -620,16 +632,18 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       });
       
       let targetDisplayId = body.target_task_id;
-      try {
-        const targetDoc = await getDoc(doc(db, 'tasks', body.target_task_id));
+      
+      // Let's background the fetch and log
+      getDoc(doc(db, 'tasks', body.target_task_id)).then(targetDoc => {
         if (targetDoc.exists()) {
-          targetDisplayId = targetDoc.data().display_id || `IC-${targetDoc.id}`;
+           const targetData = targetDoc.data();
+           const displayId = targetData.display_id || `IC-${targetDoc.id}`;
+           logActivity(body.source_task_id, "Linked task", `Linked to Task #${displayId}`);
+        } else {
+           logActivity(body.source_task_id, "Linked task", `Linked to Task #${body.target_task_id}`);
         }
-      } catch (e) {
-        console.error("Failed to fetch target task for activity log", e);
-      }
+      }).catch(e => console.error("Failed to fetch target task for activity log", e));
 
-      await logActivity(body.source_task_id, "Linked task", `Linked to Task #${targetDisplayId}`);
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }
@@ -640,12 +654,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         const linkDoc = await getDoc(doc(db, 'task_links', linkId));
         if (linkDoc.exists()) {
           const linkData = linkDoc.data();
-          let targetDisplayId = linkData.target_task_id;
-          const targetDoc = await getDoc(doc(db, 'tasks', linkData.target_task_id));
-          if (targetDoc.exists()) {
-            targetDisplayId = targetDoc.data().display_id || `IC-${targetDoc.id}`;
-          }
-          await logActivity(linkData.source_task_id, "Removed link", `Removed link to Task #${targetDisplayId}`);
+          
+          // Background the log fetch
+          getDoc(doc(db, 'tasks', linkData.target_task_id)).then(targetDoc => {
+             const displayId = targetDoc.exists() ? (targetDoc.data().display_id || `IC-${targetDoc.id}`) : linkData.target_task_id;
+             logActivity(linkData.source_task_id, "Removed link", `Removed link to Task #${displayId}`);
+          }).catch(e => console.error(e));
         }
       } catch (e) {
         console.error("Failed to log link removal", e);
@@ -738,7 +752,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         created_at: serverTimestamp()
       });
 
-      await logActivity(taskId, "Uploaded attachment", file.name);
+      logActivity(taskId, "Uploaded attachment", file.name).catch(e => console.error(e));
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }
@@ -756,10 +770,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const attachmentDoc = await getDoc(doc(db, 'attachments', attachmentId));
       if (attachmentDoc.exists()) {
         const data = attachmentDoc.data();
-        // We only delete the database record, not the file in Google Drive
-        // to preserve the file in the shared drive for backup purposes.
         await deleteDoc(doc(db, 'attachments', attachmentId));
-        await logActivity(data.task_id, "Deleted attachment", data.original_name);
+        logActivity(data.task_id, "Deleted attachment", data.original_name).catch(e => console.error(e));
       }
       return new Response(null, { status: 204 });
     }

@@ -402,7 +402,7 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
       
       <div 
         ref={setNodeRef}
-        className={`kanban-column flex-1 overflow-y-auto transition-colors scrollbar-thin scrollbar-thumb-theme ${isOver ? 'bg-[var(--bg-secondary-hover)]' : ''}`}
+        className={`kanban-column flex-1 overflow-y-auto pr-2 pb-2 transition-colors scrollbar-thin scrollbar-thumb-theme ${isOver ? 'bg-[var(--bg-secondary-hover)]' : ''}`}
       >
         <SortableContext 
           id={id}
@@ -482,10 +482,10 @@ function TaskListView({
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col h-full transition-colors duration-200">
-      <div className="overflow-x-auto flex-1">
-        <table className="w-max min-w-full text-left border-collapse whitespace-nowrap">
-          <thead>
-            <tr className="bg-[var(--bg-primary)] border-b border-[var(--border-color)]">
+      <div className="overflow-auto flex-1">
+        <table className="w-max min-w-full text-left border-collapse whitespace-nowrap relative">
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-[var(--bg-primary)] border-b border-[var(--border-color)] shadow-sm">
               <th 
                 className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
                 onClick={() => onSort('id')}
@@ -1218,8 +1218,16 @@ export default function App() {
               body: uploadData
             });
           }
+          setTasks(prev => [newTask, ...prev]);
+        } else {
+          const resultTask = await res.json();
+          if (editingTask) {
+             setTasks(prev => prev.map(t => t.id === resultTask.id ? resultTask : t));
+          } else {
+             setTasks(prev => [resultTask, ...prev]);
+          }
         }
-        fetchTasks();
+        
         closeModal();
       }
     } catch (err) {
@@ -1234,7 +1242,7 @@ export default function App() {
     try {
       const res = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        await fetchTasks();
+        setTasks(prev => prev.filter(t => t.id !== id));
         closeModal();
       } else {
         console.error('Delete failed');
@@ -1734,7 +1742,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200">
+    <div className="h-screen overflow-hidden flex bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-200">
       {/* Mobile Overlay */}
       <AnimatePresence>
         {isSidebarVisible && (
@@ -2116,7 +2124,7 @@ export default function App() {
         ) : (
           <>
             {/* Main Content */}
-            <main className="flex-1 p-6 overflow-auto">
+            <main className={`flex-1 flex flex-col min-h-0 ${viewMode === 'board' ? 'p-6 overflow-x-auto overflow-y-hidden' : 'p-6 overflow-hidden'}`}>
         {viewMode === 'board' ? (
           <DndContext
             sensors={sensors}
@@ -2125,7 +2133,7 @@ export default function App() {
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-6 min-w-max h-full">
+            <div className="flex gap-6 min-w-max flex-1 min-h-0">
               {columns.map(column => (
                 <KanbanColumn
                   key={column.id}

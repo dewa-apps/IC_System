@@ -41,7 +41,8 @@ import {
   Moon,
   History,
   Lock,
-  Bell
+  Bell,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -68,6 +69,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser } from './types';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
+import RichTextEditor from './components/RichTextEditor';
+
+// Helper to strip HTML tags for line-clamp preview
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || "";
+};
 
 const STATUS_COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'TODO', label: 'To Do' },
@@ -197,9 +206,9 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
       {task.description && (
         <p 
           className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2 leading-normal"
-          title={task.description}
+          title={stripHtml(task.description)}
         >
-          {task.description}
+          {stripHtml(task.description)}
         </p>
       )}
 
@@ -555,7 +564,7 @@ function TaskListView({
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={task.status}
-                      onChange={(e) => onInlineUpdate(task.id, 'status', e.target.value)}
+                      onChange={(e) => onInlineUpdate(String(task.id), 'status', e.target.value)}
                       className="text-[10px] px-2 py-1 bg-[var(--border-color)] text-[var(--text-secondary)] rounded font-bold uppercase whitespace-nowrap outline-none cursor-pointer hover:bg-[var(--bg-secondary)] border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
                     >
                       <option value="TODO">TODO</option>
@@ -570,7 +579,7 @@ function TaskListView({
                       {getPriorityIcon(task.priority)}
                       <select
                         value={task.priority}
-                        onChange={(e) => onInlineUpdate(task.id, 'priority', e.target.value)}
+                        onChange={(e) => onInlineUpdate(String(task.id), 'priority', e.target.value)}
                         className="text-xs text-[var(--text-secondary)] bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
                       >
                         <option value="URGENT">URGENT</option>
@@ -599,7 +608,7 @@ function TaskListView({
                       )}
                       <select
                         value={task.assignee || ''}
-                        onChange={(e) => onInlineUpdate(task.id, 'assignee', e.target.value || null)}
+                        onChange={(e) => onInlineUpdate(String(task.id), 'assignee', e.target.value || null)}
                         className={`text-xs bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none ${!task.assignee ? 'text-[var(--text-muted)] italic' : 'text-[var(--text-secondary)]'}`}
                       >
                         <option value="">Unassigned</option>
@@ -738,6 +747,7 @@ export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskLimit, setTaskLimit] = useState(50);
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
@@ -795,26 +805,42 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+      return 'system';
     }
-    return 'light';
+    return 'system';
+  });
+
+  const [notificationConfig, setNotificationConfig] = useState({
+    email: localStorage.getItem('notify_email') !== 'false', // default true
+    inApp: localStorage.getItem('notify_in_app') !== 'false' // default true
   });
 
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
+    root.classList.remove('light', 'dark');
+    
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
     } else {
-      root.classList.remove('dark');
+      root.classList.add(theme);
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  const updateNotificationConfig = (key: 'email' | 'inApp', value: boolean) => {
+    setNotificationConfig(prev => {
+      const updated = { ...prev, [key]: value };
+      localStorage.setItem(key === 'email' ? 'notify_email' : 'notify_in_app', String(value));
+      return updated;
+    });
+  };
 
   // Pagination, Sort, Filter states
   const [currentPage, setCurrentPage] = useState(1);
@@ -823,6 +849,78 @@ export default function App() {
   const [selectedPriorities, setSelectedPriorities] = useState<TaskPriority[]>([]);
   const [sortField, setSortField] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Calculate filtered tasks here to be used in views and exports
+  const uniqueAssignees = Array.from(new Set(tasks.map(t => t.assignee).filter(Boolean))) as string[];
+  const hasUnassignedTasks = tasks.some(t => !t.assignee);
+  const uniqueCategories = metadataOptions.categories;
+  const uniqueBrands = metadataOptions.brands;
+  const uniqueRequestors = metadataOptions.requestors;
+  const uniqueDivisions = metadataOptions.divisions;
+
+  const filteredTasks = tasks.filter(t => {
+    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.assignee?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.requestor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.category?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    const matchesAssignee = selectedAssignees.length === 0 || 
+      (t.assignee && selectedAssignees.includes(t.assignee)) ||
+      (!t.assignee && selectedAssignees.includes('Unassigned'));
+    const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
+    const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority);
+    
+    return matchesSearch && matchesAssignee && matchesStatus && matchesPriority;
+  }).sort((a, b) => {
+    let comparison = 0;
+    if (sortField === 'id') {
+      comparison = Number(a.id) - Number(b.id);
+    } else if (sortField === 'title') {
+      comparison = a.title.localeCompare(b.title);
+    } else if (sortField === 'dueDate') {
+      if (!a.due_date) return sortOrder === 'asc' ? 1 : -1;
+      if (!b.due_date) return sortOrder === 'asc' ? -1 : 1;
+      comparison = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    } else if (sortField === 'priority') {
+      comparison = PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
+    }
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const handleExportData = () => {
+    const headers = ['Task ID', 'Title', 'Description', 'Status', 'Priority', 'Assignee', 'Category', 'Brand', 'Requestor', 'Division', 'Request Date', 'Due Date', 'Created At'];
+    
+    const rows = filteredTasks.map(task => {
+      return [
+        task.display_id || `IC-${task.id}`,
+        `"${task.title.replace(/"/g, '""')}"`,
+        `"${stripHtml(task.description || '').replace(/"/g, '""')}"`,
+        task.status,
+        task.priority,
+        task.assignee || 'Unassigned',
+        task.category || '',
+        task.brand || '',
+        task.requestor || '',
+        task.division || '',
+        task.request_date || '',
+        task.due_date || '',
+        task.created_at ? new Date(task.created_at).toISOString().split('T')[0] : ''
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `tasks_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -1621,46 +1719,6 @@ export default function App() {
     }
   }, [activeTask, tasks, syncTaskStatus]);
 
-  const uniqueAssignees = Array.from(new Set(tasks.map(t => t.assignee).filter(Boolean))) as string[];
-  const hasUnassignedTasks = tasks.some(t => !t.assignee);
-  const uniqueCategories = metadataOptions.categories;
-  const uniqueBrands = metadataOptions.brands;
-  const uniqueRequestors = metadataOptions.requestors;
-  const uniqueDivisions = metadataOptions.divisions;
-
-  const filteredTasks = tasks.filter(t => {
-    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.assignee?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.requestor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.category?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesAssignee = selectedAssignees.length === 0 || 
-      (t.assignee && selectedAssignees.includes(t.assignee)) ||
-      (!t.assignee && selectedAssignees.includes('Unassigned'));
-    const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
-    const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority);
-    
-    return matchesSearch && matchesAssignee && matchesStatus && matchesPriority;
-  }).sort((a, b) => {
-    let comparison = 0;
-    if (sortField === 'id') {
-      comparison = a.id - b.id;
-    } else if (sortField === 'title') {
-      comparison = a.title.localeCompare(b.title);
-    } else if (sortField === 'status') {
-      comparison = a.status.localeCompare(b.status);
-    } else if (sortField === 'priority') {
-      comparison = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
-    } else if (sortField === 'due_date') {
-      const dateA = a.due_date ? new Date(a.due_date).getTime() : 0;
-      const dateB = b.due_date ? new Date(b.due_date).getTime() : 0;
-      comparison = dateA - dateB;
-    }
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
   const totalPages = Math.ceil(filteredTasks.length / rowsPerPage);
   const paginatedTasks = filteredTasks.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
@@ -1692,7 +1750,7 @@ export default function App() {
           case 'CATEGORY':
             return (a.category || '').localeCompare(b.category || '');
           case 'NEWEST_ID':
-            return b.id - a.id;
+            return Number(b.id) - Number(a.id);
           default:
             return 0;
         }
@@ -1794,12 +1852,6 @@ export default function App() {
               onClick={() => setCurrentView('tasks')}
             />
             <SidebarItem 
-              icon={<Layers className="w-5 h-5" />} 
-              label="Backlog" 
-              collapsed={isSidebarCollapsed} 
-              visible={isSidebarVisible}
-            />
-            <SidebarItem 
               icon={<BarChart3 className="w-5 h-5" />} 
               label="Reports" 
               active={currentView === 'reports'}
@@ -1879,6 +1931,23 @@ export default function App() {
               )}
 
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                <button 
+                  onClick={async () => {
+                    setIsRefreshing(true);
+                    await Promise.all([
+                      fetchTasks(),
+                      fetchUsers(),
+                      fetchTemplates(),
+                      fetchMetadataOptions()
+                    ]);
+                    setTimeout(() => setIsRefreshing(false), 500); // 500ms guaranteed spin
+                  }}
+                  className="p-2 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-secondary)]"
+                  title="Refresh Data"
+                >
+                  <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </button>
+
                 {/* Notifications */}
                 <div className="relative">
                   <button 
@@ -1912,6 +1981,14 @@ export default function App() {
                               className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-50' : ''}`}
                               onClick={() => {
                                 if (!notif.read) markNotificationAsRead(notif.id);
+                                setShowNotifications(false);
+                                if (notif.task_display_id) {
+                                  const targetTask = tasks.find(t => t.display_id === notif.task_display_id || `IC-${t.id}` === notif.task_display_id);
+                                  if (targetTask) {
+                                    setCurrentView('tasks');
+                                    openModal(targetTask);
+                                  }
+                                }
                               }}
                             >
                               <div className="flex gap-3">
@@ -2045,6 +2122,17 @@ export default function App() {
                     <span className="hidden sm:inline">List</span>
                   </button>
                 </div>
+
+                <div className="w-px h-6 bg-[var(--border-color)] mx-1" />
+
+                <button 
+                  onClick={handleExportData}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                  title="Export Tasks to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
               </div>
 
               <div className="flex items-center gap-4 shrink-0">
@@ -2118,7 +2206,15 @@ export default function App() {
         </header>
 
         {currentView === 'settings' ? (
-          <SettingsView users={users} currentUserRole={currentUserRole} onUsersChange={fetchUsers} />
+          <SettingsView 
+            users={users} 
+            currentUserRole={currentUserRole} 
+            onUsersChange={fetchUsers} 
+            theme={theme}
+            setTheme={setTheme}
+            notificationConfig={notificationConfig}
+            updateNotificationConfig={updateNotificationConfig}
+          />
         ) : currentView === 'reports' ? (
           <ReportsView tasks={tasks} />
         ) : (
@@ -2376,12 +2472,12 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Description</label>
-                  <textarea 
-                    rows={4}
-                    className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] resize-none"
-                    value={formData.description}
-                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Add more details..."
+                  <RichTextEditor 
+                    content={formData.description}
+                    onChange={(html) => setFormData({ ...formData, description: html })}
+                    users={users}
+                    placeholder="Add more details... (Type @ to mention someone)"
+                    minHeight="120px"
                   />
                 </div>
 
@@ -2824,7 +2920,7 @@ export default function App() {
                                               onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                setEditingCommentId(comment.id);
+                                                setEditingCommentId(Number(comment.id));
                                                 setEditingCommentContent(comment.content);
                                               }}
                                               className="p-1 text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded transition-all"
@@ -2837,7 +2933,7 @@ export default function App() {
                                               onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                setCommentToDelete(comment.id);
+                                                setCommentToDelete(Number(comment.id));
                                               }}
                                               className="p-1 text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded transition-all"
                                               title="Delete"
@@ -2852,13 +2948,14 @@ export default function App() {
                                 </div>
                                 {editingCommentId === comment.id ? (
                                   <div className="mt-1">
-                                    <textarea
-                                      className="w-full px-2 py-1.5 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] resize-none"
-                                      rows={2}
-                                      value={editingCommentContent}
-                                      onChange={e => setEditingCommentContent(e.target.value)}
+                                    <RichTextEditor 
+                                      content={editingCommentContent}
+                                      onChange={(html) => setEditingCommentContent(html)}
+                                      users={users}
+                                      placeholder="Edit comment..."
+                                      minHeight="60px"
                                     />
-                                    <div className="flex justify-end gap-2 mt-1">
+                                    <div className="flex justify-end gap-2 mt-2">
                                       <button
                                         type="button"
                                         onClick={() => setEditingCommentId(null)}
@@ -2870,7 +2967,7 @@ export default function App() {
                                       <button
                                         type="button"
                                         onClick={handleUpdateComment}
-                                        disabled={isUpdatingComment || !editingCommentContent.trim()}
+                                        disabled={isUpdatingComment || !editingCommentContent.trim() || editingCommentContent === '<p></p>'}
                                         className="px-2 py-1 text-[10px] font-bold btn-primary rounded hover:bg-[var(--accent-hover)] disabled:opacity-50"
                                       >
                                         {isUpdatingComment ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Update'}
@@ -2878,7 +2975,10 @@ export default function App() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">{comment.content}</p>
+                                  <div 
+                                    className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1"
+                                    dangerouslySetInnerHTML={{ __html: comment.content }}
+                                  />
                                 )}
                               </div>
                             </div>
@@ -2903,25 +3003,30 @@ export default function App() {
                           {getInitials(currentUserName)}
                         </div>
                       )}
-                      <div className="flex-1 relative">
-                        <textarea 
-                          rows={2}
-                          className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] text-sm resize-none"
-                          placeholder="Add a comment..."
-                          value={newComment}
-                          onChange={e => setNewComment(e.target.value)}
+                      <div className="flex-1 relative flex flex-col gap-2">
+                        <RichTextEditor 
+                          content={newComment}
+                          onChange={(html) => setNewComment(html)}
+                          users={users}
+                          placeholder="Add a comment... (Type @ to mention someone)"
+                          minHeight="60px"
                         />
-                        <button 
-                          disabled={isSubmittingComment || !newComment.trim()}
-                          onClick={handleAddComment}
-                          className="absolute right-2 bottom-2 p-1.5 btn-primary rounded hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {isSubmittingComment ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Send className="w-4 h-4" />
-                          )}
-                        </button>
+                        <div className="flex justify-end">
+                          <button 
+                            disabled={isSubmittingComment || !newComment.trim() || newComment === '<p></p>'}
+                            onClick={handleAddComment}
+                            className="p-1.5 px-3 btn-primary rounded hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 text-sm font-medium"
+                          >
+                            {isSubmittingComment ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4" />
+                                <span>Send</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2966,7 +3071,7 @@ export default function App() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleRemoveLink(link.id)}
+                              onClick={() => handleRemoveLink(Number(link.id))}
                               disabled={isRemovingLink === link.id}
                               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger-color)] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                               title="Remove link"

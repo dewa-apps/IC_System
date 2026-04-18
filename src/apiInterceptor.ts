@@ -73,43 +73,47 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     };
     
     // Store in Firestore for in-app notifications
-    try {
-      await addDoc(collection(db, 'notifications'), notificationPayload);
-    } catch (e) {
-      console.error("Failed to save notification to Firestore", e);
+    if (localStorage.getItem('notify_in_app') !== 'false') {
+      try {
+        await addDoc(collection(db, 'notifications'), notificationPayload);
+      } catch (e) {
+        console.error("Failed to save notification to Firestore", e);
+      }
     }
 
     // Attempt to send email via Google Apps Script
-    try {
-      // Find the assignee's email from the users collection
-      const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', assignee)));
-      if (!usersSnapshot.empty) {
-        const assigneeEmail = usersSnapshot.docs[0].data().email;
-        
-        // Use the same GAS URL used for attachments, assuming it handles action: 'sendEmail'
-        // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
-        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
-        
-        const response = await originalFetch(gasUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-          },
-          body: JSON.stringify({
-            action: 'sendEmail',
-            to: assigneeEmail,
-            subject: `[IC Task Manager] New Task Assigned: ${displayId}`,
-            body: `Hello ${assignee},\n\n${assignedBy} has assigned you to a new task.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
-          })
-        });
-        
-        const resultText = await response.text();
-        console.log(`Email notification sent to ${assigneeEmail}. GAS Response:`, resultText);
-      } else {
-        console.warn(`Could not find email for assignee: ${assignee}`);
+    if (localStorage.getItem('notify_email') !== 'false') {
+      try {
+        // Find the assignee's email from the users collection
+        const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', assignee)));
+        if (!usersSnapshot.empty) {
+          const assigneeEmail = usersSnapshot.docs[0].data().email;
+          
+          // Use the same GAS URL used for attachments, assuming it handles action: 'sendEmail'
+          // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
+          const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+          
+          const response = await originalFetch(gasUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({
+              action: 'sendEmail',
+              to: assigneeEmail,
+              subject: `[IC Task Manager] New Task Assigned: ${displayId}`,
+              body: `Hello ${assignee},\n\n${assignedBy} has assigned you to a new task.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+            })
+          });
+          
+          const resultText = await response.text();
+          console.log(`Email notification sent to ${assigneeEmail}. GAS Response:`, resultText);
+        } else {
+          console.warn(`Could not find email for assignee: ${assignee}`);
+        }
+      } catch (e) {
+        console.error("Failed to send email notification", e);
       }
-    } catch (e) {
-      console.error("Failed to send email notification", e);
     }
   };
 
@@ -152,37 +156,41 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         };
         
         // Store in Firestore for in-app notifications
-        try {
-          await addDoc(collection(db, 'notifications'), notificationPayload);
-        } catch (e) {
-          console.error("Failed to save notification to Firestore", e);
+        if (localStorage.getItem('notify_in_app') !== 'false') {
+          try {
+            await addDoc(collection(db, 'notifications'), notificationPayload);
+          } catch (e) {
+            console.error("Failed to save notification to Firestore", e);
+          }
         }
 
         // Attempt to send email
-        try {
-          const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', user)));
-          if (!usersSnapshot.empty) {
-            const userEmail = usersSnapshot.docs[0].data().email;
-            const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
-            
-            const response = await originalFetch(gasUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-              },
-              body: JSON.stringify({
-                action: 'sendEmail',
-                to: userEmail,
-                subject: `[IC Task Manager] New Comment on Task: ${displayId}`,
-                body: `Hello ${user},\n\n${commentedBy} added a new comment to task "${taskTitle}" (ID: ${displayId}).\n\nComment:\n"${commentContent}"\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
-              })
-            });
-            
-            const resultText = await response.text();
-            console.log(`Email notification sent to ${userEmail}. GAS Response:`, resultText);
+        if (localStorage.getItem('notify_email') !== 'false') {
+          try {
+            const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', user)));
+            if (!usersSnapshot.empty) {
+              const userEmail = usersSnapshot.docs[0].data().email;
+              const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+              
+              const response = await originalFetch(gasUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'text/plain;charset=utf-8',
+                },
+                body: JSON.stringify({
+                  action: 'sendEmail',
+                  to: userEmail,
+                  subject: `[IC Task Manager] New Comment on Task: ${displayId}`,
+                  body: `Hello ${user},\n\n${commentedBy} added a new comment to task "${taskTitle}" (ID: ${displayId}).\n\nComment:\n"${commentContent}"\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+                })
+              });
+              
+              const resultText = await response.text();
+              console.log(`Email notification sent to ${userEmail}. GAS Response:`, resultText);
+            }
+          } catch (e) {
+            console.error("Failed to send email notification", e);
           }
-        } catch (e) {
-          console.error("Failed to send email notification", e);
         }
       }
     } catch (e) {
@@ -211,34 +219,38 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       created_at: serverTimestamp()
     };
     
-    try {
-      await addDoc(collection(db, 'notifications'), notificationPayload);
-    } catch (e) {
-      console.error("Failed to save notification to Firestore", e);
+    if (localStorage.getItem('notify_in_app') !== 'false') {
+      try {
+        await addDoc(collection(db, 'notifications'), notificationPayload);
+      } catch (e) {
+        console.error("Failed to save notification to Firestore", e);
+      }
     }
 
-    try {
-      const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', authorName)));
-      if (!usersSnapshot.empty) {
-        const authorEmail = usersSnapshot.docs[0].data().email;
-        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
-        
-        const response = await originalFetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'sendEmail',
-            to: authorEmail,
-            subject: `[IC Task Manager] Task ${displayId} ${actionText}`,
-            body: `Hello ${authorName},\n\n${actionBy} has ${actionText} the task you created.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details (if applicable).\n\nBest regards,\nIC System`
-          })
-        });
-        
-        const resultText = await response.text();
-        console.log(`Email notification sent to ${authorEmail}. GAS Response:`, resultText);
+    if (localStorage.getItem('notify_email') !== 'false') {
+      try {
+        const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', authorName)));
+        if (!usersSnapshot.empty) {
+          const authorEmail = usersSnapshot.docs[0].data().email;
+          const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+          
+          const response = await originalFetch(gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'sendEmail',
+              to: authorEmail,
+              subject: `[IC Task Manager] Task ${displayId} ${actionText}`,
+              body: `Hello ${authorName},\n\n${actionBy} has ${actionText} the task you created.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details (if applicable).\n\nBest regards,\nIC System`
+            })
+          });
+          
+          const resultText = await response.text();
+          console.log(`Email notification sent to ${authorEmail}. GAS Response:`, resultText);
+        }
+      } catch (e) {
+        console.error("Failed to send email notification", e);
       }
-    } catch (e) {
-      console.error("Failed to send email notification", e);
     }
   };
 

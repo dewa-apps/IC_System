@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { CheckCircle2, Clock, AlertCircle, ListTodo, User, CircleDashed, Calendar } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, ListTodo, User, CircleDashed, Calendar, Download } from 'lucide-react';
 
 interface ReportsViewProps {
   tasks: Task[];
@@ -13,7 +13,7 @@ interface ReportsViewProps {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
 
 export default function ReportsView({ tasks }: ReportsViewProps) {
-  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('thisYear');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
@@ -35,6 +35,20 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
     } else if (dateFilter === 'lastMonth') {
       start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       end = new Date(now.getFullYear(), now.getMonth(), 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (dateFilter === 'thisYear') {
+      start = new Date(now.getFullYear(), 0, 1);
+    } else if (dateFilter === 'lastYear') {
+      start = new Date(now.getFullYear() - 1, 0, 1);
+      end = new Date(now.getFullYear() - 1, 11, 31);
+      end.setHours(23, 59, 59, 999);
+    } else if (dateFilter === 'semester1') {
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now.getFullYear(), 5, 30);
+      end.setHours(23, 59, 59, 999);
+    } else if (dateFilter === 'semester2') {
+      start = new Date(now.getFullYear(), 6, 1);
+      end = new Date(now.getFullYear(), 11, 31);
       end.setHours(23, 59, 59, 999);
     } else if (dateFilter === 'custom') {
       if (startDate) {
@@ -110,11 +124,59 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
       .slice(0, 10); // Top 10 assignees
   }, [filteredTasks]);
 
+  const handleExportDataWrapper = () => {
+    const headers = ['Task ID', 'Title', 'Description', 'Status', 'Priority', 'Assignee', 'Category', 'Brand', 'Request Date', 'Due Date', 'Created At'];
+    
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || "";
+    };
+
+    const rows = filteredTasks.map(task => {
+      return [
+        task.display_id || `IC-${task.id}`,
+        `"${task.title.replace(/"/g, '""')}"`,
+        `"${stripHtml(task.description || '').replace(/"/g, '""')}"`,
+        task.status,
+        task.priority,
+        task.assignee || 'Unassigned',
+        task.category || '',
+        task.brand || '',
+        task.request_date || '',
+        task.due_date || '',
+        task.created_at ? new Date(task.created_at).toISOString().split('T')[0] : ''
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `analytics_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <main className="flex-1 p-6 overflow-auto bg-[var(--bg-body)]">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-[var(--text-primary)]">Reports & Analytics</h2>
         <div className="flex flex-wrap items-center gap-2">
+          
+          <button 
+            onClick={handleExportDataWrapper}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+            title="Export analytics to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+
           <div className="flex items-center gap-2 bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
             <Calendar className="w-4 h-4 text-[var(--text-secondary)] ml-2" />
             <select
@@ -122,12 +184,16 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
               onChange={(e) => setDateFilter(e.target.value)}
               className="bg-transparent border-none text-sm text-[var(--text-primary)] focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
             >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="last7">Last 7 Days</option>
-              <option value="thisMonth">This Month</option>
-              <option value="lastMonth">Last Month</option>
-              <option value="custom">Custom Range</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="all">All Time</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="today">Today</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="last7">Last 7 Days</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisMonth">This Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastMonth">Last Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisYear">This Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastYear">Last Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester1">Semester 1 (Jan-Jun)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester2">Semester 2 (Jul-Dec)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="custom">Custom Range</option>
             </select>
           </div>
           {dateFilter === 'custom' && (
@@ -291,6 +357,7 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }

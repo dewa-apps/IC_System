@@ -8,9 +8,21 @@ interface SettingsViewProps {
   users: AppUser[];
   currentUserRole: 'admin' | 'user';
   onUsersChange: () => void;
+  theme?: 'light' | 'dark' | 'system';
+  setTheme?: (theme: 'light' | 'dark' | 'system') => void;
+  notificationConfig?: { email: boolean; inApp: boolean };
+  updateNotificationConfig?: (key: 'email' | 'inApp', value: boolean) => void;
 }
 
-export default function SettingsView({ users, currentUserRole, onUsersChange }: SettingsViewProps) {
+export default function SettingsView({ 
+  users, 
+  currentUserRole, 
+  onUsersChange,
+  theme = 'system',
+  setTheme,
+  notificationConfig = { email: true, inApp: true },
+  updateNotificationConfig
+}: SettingsViewProps) {
   const currentUser = auth.currentUser;
   const [activeTab, setActiveTab] = useState('profile');
   
@@ -197,7 +209,11 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
                       <h3 className="font-medium text-[var(--text-primary)]">Theme Preference</h3>
                       <p className="text-sm text-[var(--text-secondary)]">Choose your preferred theme.</p>
                     </div>
-                    <select className="px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-body)] text-[var(--text-primary)] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <select 
+                      className="px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-body)] text-[var(--text-primary)] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={theme}
+                      onChange={(e) => setTheme?.(e.target.value as 'light' | 'dark' | 'system')}
+                    >
                       <option value="system">System Default</option>
                       <option value="light">Light</option>
                       <option value="dark">Dark</option>
@@ -221,7 +237,12 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
                       <p className="text-sm text-[var(--text-secondary)]">Receive updates via email.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={notificationConfig.email}
+                        onChange={(e) => updateNotificationConfig?.('email', e.target.checked)}
+                      />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
@@ -231,7 +252,12 @@ export default function SettingsView({ users, currentUserRole, onUsersChange }: 
                       <p className="text-sm text-[var(--text-secondary)]">Notify when a task is assigned to you.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={notificationConfig.inApp}
+                        onChange={(e) => updateNotificationConfig?.('inApp', e.target.checked)}
+                      />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                     </label>
                   </div>

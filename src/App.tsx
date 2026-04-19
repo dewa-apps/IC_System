@@ -70,6 +70,7 @@ import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template,
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import RichTextEditor from './components/RichTextEditor';
+import GanttView from './components/GanttView';
 
 // Helper to strip HTML tags for line-clamp preview
 const stripHtml = (html: string) => {
@@ -251,6 +252,22 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
           <span className="text-[10px] font-bold text-[var(--text-muted)]">{task.display_id || `IC-${task.id}`}</span>
         </div>
         <div className="flex items-center gap-3">
+          {(task.comment_count !== undefined && task.comment_count > 0 || task.attachment_count !== undefined && task.attachment_count > 0) && (
+            <div className="flex items-center gap-2 text-[10px] font-medium text-[var(--text-muted)]">
+              {task.comment_count !== undefined && task.comment_count > 0 && (
+                <div className="flex items-center gap-1" title="Comments">
+                  <MessageSquare className="w-3 h-3" />
+                  {task.comment_count}
+                </div>
+              )}
+              {task.attachment_count !== undefined && task.attachment_count > 0 && (
+                <div className="flex items-center gap-1" title="Attachments">
+                  <Paperclip className="w-3 h-3" />
+                  {task.attachment_count}
+                </div>
+              )}
+            </div>
+          )}
           {task.due_date && (
             <div className={`flex items-center gap-1 text-[10px] font-medium ${isOverdue ? 'text-[var(--danger-color)]' : 'text-[var(--text-muted)]'}`}>
               <Clock className="w-3 h-3" />
@@ -270,18 +287,38 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
                 {getInitials(task.authorName)}
               </div>
             )}
-            {task.assignee && (
-              <div 
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm border border-[var(--bg-surface)] z-20" 
-                title={`Assignee: ${task.assignee}`}
-                style={{ 
-                  backgroundColor: getAvatarColor(task.assignee).bg,
-                  color: getAvatarColor(task.assignee).text
-                }}
-              >
-                {getInitials(task.assignee)}
-              </div>
-            )}
+            {(() => {
+              const assignees = Array.from(new Set([
+                task.assignee, 
+                ...(task.subtasks?.map(st => st.assignee || task.assignee) || [])
+              ])).filter(Boolean) as string[];
+
+              if (assignees.length === 0) return null;
+
+              if (assignees.length === 1) {
+                return (
+                  <div 
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm border border-[var(--bg-surface)] z-20" 
+                    title={`Assignee: ${assignees[0]}`}
+                    style={{ 
+                      backgroundColor: getAvatarColor(assignees[0]).bg,
+                      color: getAvatarColor(assignees[0]).text
+                    }}
+                  >
+                    {getInitials(assignees[0])}
+                  </div>
+                );
+              }
+
+              return (
+                <div 
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shadow-sm border border-[var(--bg-surface)] z-20 bg-[var(--bg-secondary)] text-[var(--accent-color)]" 
+                  title={`Assignees: ${assignees.join(', ')}`}
+                >
+                  +{assignees.length}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -298,10 +335,11 @@ interface KanbanColumnProps {
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
   onRenameColumn: (id: TaskStatus, newLabel: string) => void;
   onSortTasks: (id: TaskStatus, criteria: SortCriteria) => void;
+  currentUserRole?: string;
   key?: React.Key;
 }
 
-function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIcon, onRenameColumn, onSortTasks }: KanbanColumnProps) {
+function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIcon, onRenameColumn, onSortTasks, currentUserRole }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: id,
   });
@@ -358,23 +396,31 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
                 onClick={() => setIsMenuOpen(false)}
               />
               <div className="absolute right-0 mt-1 w-48 bg-[var(--bg-surface)] rounded-md shadow-xl border border-[var(--border-color)] z-30 py-1 overflow-hidden">
-                <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] mb-1">
-                  Column Actions
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsRenaming(true);
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                  Rename Column
-                </button>
-                
-                <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-y border-[var(--border-color)] my-1">
-                  Sort Tasks By
-                </div>
+                {currentUserRole === 'admin' && (
+                  <>
+                    <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] mb-1">
+                      Column Actions
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setIsRenaming(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                      Rename Column
+                    </button>
+                    <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-y border-[var(--border-color)] my-1">
+                      Sort Tasks By
+                    </div>
+                  </>
+                )}
+                {currentUserRole !== 'admin' && (
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] mb-1">
+                    Sort Tasks By
+                  </div>
+                )}
                 <button 
                   onClick={() => { onSortTasks(id, 'DUE_DATE'); setIsMenuOpen(false); }}
                   className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2 transition-colors"
@@ -591,21 +637,43 @@ function TaskListView({
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      {task.assignee ? (
-                        <div 
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                          style={{ 
-                            backgroundColor: getAvatarColor(task.assignee).bg,
-                            color: getAvatarColor(task.assignee).text
-                          }}
-                        >
-                          {getInitials(task.assignee)}
-                        </div>
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center shrink-0">
-                          <User className="w-3 h-3 text-[var(--text-muted)]" />
-                        </div>
-                      )}
+                      {(() => {
+                        const assignees = Array.from(new Set([
+                          task.assignee, 
+                          ...(task.subtasks?.map(st => st.assignee || task.assignee) || [])
+                        ])).filter(Boolean) as string[];
+
+                        if (assignees.length === 0) {
+                          return (
+                            <div className="w-6 h-6 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center shrink-0">
+                              <User className="w-3 h-3 text-[var(--text-muted)]" />
+                            </div>
+                          );
+                        }
+
+                        if (assignees.length === 1) {
+                          return (
+                            <div 
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                              style={{ 
+                                backgroundColor: getAvatarColor(assignees[0]).bg,
+                                color: getAvatarColor(assignees[0]).text
+                              }}
+                            >
+                              {getInitials(assignees[0])}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div 
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 bg-[var(--bg-secondary)] text-[var(--accent-color)] border border-[var(--border-color)]" 
+                            title={`Assignees: ${assignees.join(', ')}`}
+                          >
+                            +{assignees.length}
+                          </div>
+                        );
+                      })()}
                       <select
                         value={task.assignee || ''}
                         onChange={(e) => onInlineUpdate(String(task.id), 'assignee', e.target.value || null)}
@@ -801,7 +869,7 @@ export default function App() {
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [currentView, setCurrentView] = useState<'tasks' | 'reports' | 'settings'>('tasks');
   const [isAccessDenied, setIsAccessDenied] = useState(false);
-  const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -847,12 +915,20 @@ export default function App() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedStatuses, setSelectedStatuses] = useState<TaskStatus[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<TaskPriority[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [sortField, setSortField] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Calculate filtered tasks here to be used in views and exports
-  const uniqueAssignees = Array.from(new Set(tasks.map(t => t.assignee).filter(Boolean))) as string[];
-  const hasUnassignedTasks = tasks.some(t => !t.assignee);
+  const uniqueAssignees = Array.from(new Set(tasks.flatMap(t => {
+    const list = [t.assignee];
+    if (t.subtasks) {
+      t.subtasks.forEach(st => list.push(st.assignee || t.assignee));
+    }
+    return list;
+  }).filter(Boolean))) as string[];
+  const hasUnassignedTasks = tasks.some(t => !t.assignee || (t.subtasks && t.subtasks.some(st => !st.assignee && !t.assignee)));
   const uniqueCategories = metadataOptions.categories;
   const uniqueBrands = metadataOptions.brands;
   const uniqueRequestors = metadataOptions.requestors;
@@ -866,13 +942,19 @@ export default function App() {
       t.requestor?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.category?.toLowerCase().includes(searchQuery.toLowerCase());
       
+    const taskAssignees = Array.from(new Set([
+      t.assignee, 
+      ...(t.subtasks?.map(st => st.assignee || t.assignee) || [])
+    ]));
+    
     const matchesAssignee = selectedAssignees.length === 0 || 
-      (t.assignee && selectedAssignees.includes(t.assignee)) ||
-      (!t.assignee && selectedAssignees.includes('Unassigned'));
+      taskAssignees.some(a => (a && selectedAssignees.includes(a)) || (!a && selectedAssignees.includes('Unassigned')));
     const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
     const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority);
+    const matchesCategory = selectedCategories.length === 0 || (t.category && selectedCategories.includes(t.category));
+    const matchesBrand = selectedBrands.length === 0 || (t.brand && selectedBrands.includes(t.brand));
     
-    return matchesSearch && matchesAssignee && matchesStatus && matchesPriority;
+    return matchesSearch && matchesAssignee && matchesStatus && matchesPriority && matchesCategory && matchesBrand;
   }).sort((a, b) => {
     let comparison = 0;
     if (sortField === 'id') {
@@ -957,7 +1039,8 @@ export default function App() {
     brand: '',
     requestor: '',
     division: '',
-    subtasks: [] as SubTask[]
+    subtasks: [] as SubTask[],
+    recurring_pattern: 'none' as 'none' | 'daily' | 'weekly' | 'monthly'
   });
 
   const getUpdatedStatus = (subtasks: SubTask[], currentStatus: TaskStatus): TaskStatus => {
@@ -982,6 +1065,7 @@ export default function App() {
       title: '',
       completed: false,
       due_date: ''
+      // Inherits parent assignee by leaving this undefined
     };
     setFormData(prev => {
       const newSubtasks = [...(prev.subtasks || []), newSubTask];
@@ -1020,6 +1104,15 @@ export default function App() {
       ...prev,
       subtasks: prev.subtasks?.map(st => 
         st.id === id ? { ...st, due_date } : st
+      )
+    }));
+  };
+
+  const updateSubTaskAssignee = (id: string, assignee: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subtasks: prev.subtasks?.map(st => 
+        st.id === id ? { ...st, assignee } : st
       )
     }));
   };
@@ -1321,6 +1414,9 @@ export default function App() {
           const resultTask = await res.json();
           if (editingTask) {
              setTasks(prev => prev.map(t => t.id === resultTask.id ? resultTask : t));
+             if (formData.status === 'DONE' || formData.status === 'CLOSED') {
+                setTimeout(() => fetchTasks(), 1000);
+             }
           } else {
              setTasks(prev => [resultTask, ...prev]);
           }
@@ -1369,7 +1465,8 @@ export default function App() {
         brand: task.brand || '',
         requestor: task.requestor || '',
         division: task.division || '',
-        subtasks: task.subtasks || []
+        subtasks: task.subtasks || [],
+        recurring_pattern: task.recurring_pattern || 'none'
       });
       fetchComments(task.id);
       fetchAttachments(task.id);
@@ -1389,7 +1486,8 @@ export default function App() {
         brand: '',
         requestor: '',
         division: '',
-        subtasks: []
+        subtasks: [],
+        recurring_pattern: 'none'
       });
       setComments([]);
     }
@@ -1437,6 +1535,7 @@ export default function App() {
         setNewComment('');
         fetchComments(editingTask.id);
         fetchActivities(editingTask.id);
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, comment_count: (t.comment_count || 0) + 1 } : t));
       }
     } catch (err) {
       console.error('Failed to add comment:', err);
@@ -1453,6 +1552,7 @@ export default function App() {
         setCommentToDelete(null);
         fetchComments(editingTask.id);
         fetchActivities(editingTask.id);
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, comment_count: Math.max(0, (t.comment_count || 0) - 1) } : t));
       }
     } catch (err) {
       console.error('Failed to delete comment:', err);
@@ -1508,6 +1608,7 @@ export default function App() {
     }
 
     setIsUploading(true);
+    let uploadedCount = 0;
     try {
       for (let i = 0; i < newFiles.length; i++) {
         const formData = new FormData();
@@ -1518,14 +1619,21 @@ export default function App() {
           body: formData
         });
 
-        if (!res.ok) throw new Error('Upload failed');
+        if (!res.ok) {
+          throw new Error('Upload failed');
+        } else {
+          uploadedCount++;
+        }
       }
-      fetchAttachments(editingTask.id);
-      fetchActivities(editingTask.id);
     } catch (err) {
       console.error('Failed to upload file:', err);
       alert('Failed to upload one or more files.');
     } finally {
+      if (uploadedCount > 0) {
+        fetchAttachments(editingTask.id);
+        fetchActivities(editingTask.id);
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, attachment_count: (t.attachment_count || 0) + uploadedCount } : t));
+      }
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -1547,6 +1655,7 @@ export default function App() {
         setAttachmentToDelete(null);
         fetchAttachments(editingTask.id);
         fetchActivities(editingTask.id);
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, attachment_count: Math.max(0, (t.attachment_count || 0) - 1) } : t));
       }
     } catch (err) {
       console.error('Failed to delete attachment:', err);
@@ -1601,8 +1710,14 @@ export default function App() {
       if (!res.ok) {
         // Rollback on failure
         fetchTasks();
-      } else if (editingTask?.id === id) {
-        fetchActivities(id);
+      } else {
+        if (editingTask?.id === id) {
+          fetchActivities(id);
+        }
+        if (newStatus === 'DONE' || newStatus === 'CLOSED') {
+          // Delay briefly to allow backend trigger to finish
+          setTimeout(() => fetchTasks(), 1000);
+        }
       }
     } catch (err) {
       console.error('Failed to sync status:', err);
@@ -1665,6 +1780,10 @@ export default function App() {
       });
       
       if (!res.ok) throw new Error('Failed to update task');
+
+      if (field === 'status' && (value === 'DONE' || value === 'CLOSED')) {
+        setTimeout(() => fetchTasks(), 1000);
+      }
     } catch (error) {
       console.error('Error updating task inline:', error);
       // Revert on failure by re-fetching
@@ -2052,54 +2171,126 @@ export default function App() {
           {currentView === 'tasks' && (
             <div className="px-4 md:px-6 py-2.5 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-surface)]">
               <div className="flex items-center gap-2 shrink-0">
-                {/* Status & Priority Filters */}
-                <div className="relative group">
+                {/* Filter Menu */}
+                <div className="relative group/main">
                   <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
                     <Filter className="w-3.5 h-3.5" />
-                    Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}
+                    Filters {(selectedStatuses.length + selectedPriorities.length + selectedCategories.length + selectedBrands.length) > 0 && `(${selectedStatuses.length + selectedPriorities.length + selectedCategories.length + selectedBrands.length})`}
                   </button>
-                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
-                    {STATUS_COLUMNS.map(status => (
-                      <label key={status.id} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedStatuses.includes(status.id)}
-                          onChange={() => {
-                            setSelectedStatuses(prev => 
-                              prev.includes(status.id) ? prev.filter(s => s !== status.id) : [...prev, status.id]
-                            );
-                            setCurrentPage(1);
-                          }}
-                          className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
-                        />
-                        <span className="text-xs text-[var(--text-primary)]">{status.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-50 py-2">
+                    
+                    {/* Status Submenu */}
+                    <div className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                      <span className="font-medium">Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}</span>
+                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)]" />
+                      
+                      <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                        <div className="space-y-1">
+                          {STATUS_COLUMNS.map(status => (
+                            <label key={status.id} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedStatuses.includes(status.id)}
+                                onChange={() => {
+                                  setSelectedStatuses(prev => 
+                                    prev.includes(status.id) ? prev.filter(s => s !== status.id) : [...prev, status.id]
+                                  );
+                                  setCurrentPage(1);
+                                }}
+                                className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                              />
+                              <span className="text-xs text-[var(--text-primary)]">{status.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="relative group">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}
-                  </button>
-                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
-                    {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
-                      <label key={priority} className="flex items-center gap-2 p-2 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedPriorities.includes(priority)}
-                          onChange={() => {
-                            setSelectedPriorities(prev => 
-                              prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
-                            );
-                            setCurrentPage(1);
-                          }}
-                          className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
-                        />
-                        <span className="text-xs text-[var(--text-primary)]">{priority}</span>
-                      </label>
-                    ))}
+                    {/* Priority Submenu */}
+                    <div className="relative group/priority px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                      <span className="font-medium">Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}</span>
+                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/priority:text-[var(--text-primary)]" />
+                      
+                      <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/priority:opacity-100 group-hover/priority:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                        <div className="space-y-1">
+                          {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
+                            <label key={priority} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedPriorities.includes(priority)}
+                                onChange={() => {
+                                  setSelectedPriorities(prev => 
+                                    prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
+                                  );
+                                  setCurrentPage(1);
+                                }}
+                                className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                              />
+                              <span className="text-xs text-[var(--text-primary)]">{priority}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category Submenu */}
+                    {uniqueCategories.length > 0 && (
+                      <div className="relative group/category px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                        <span className="font-medium">Category {selectedCategories.length > 0 && `(${selectedCategories.length})`}</span>
+                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/category:text-[var(--text-primary)]" />
+                        
+                        <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/category:opacity-100 group-hover/category:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                          <div className="space-y-1">
+                            {uniqueCategories.map(cat => (
+                              <label key={cat} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedCategories.includes(cat)}
+                                  onChange={() => {
+                                    setSelectedCategories(prev => 
+                                      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+                                    );
+                                    setCurrentPage(1);
+                                  }}
+                                  className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                                />
+                                <span className="text-xs text-[var(--text-primary)]">{cat}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Brand Submenu */}
+                    {uniqueBrands.length > 0 && (
+                      <div className="relative group/brand px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                        <span className="font-medium">Brand {selectedBrands.length > 0 && `(${selectedBrands.length})`}</span>
+                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/brand:text-[var(--text-primary)]" />
+                        
+                        <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/brand:opacity-100 group-hover/brand:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                          <div className="space-y-1">
+                            {uniqueBrands.map(brand => (
+                              <label key={brand} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedBrands.includes(brand)}
+                                  onChange={() => {
+                                    setSelectedBrands(prev => 
+                                      prev.includes(brand) ? prev.filter(b => b !== brand) : [...prev, brand]
+                                    );
+                                    setCurrentPage(1);
+                                  }}
+                                  className="rounded border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                                />
+                                <span className="text-xs text-[var(--text-primary)]">{brand}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
 
@@ -2120,6 +2311,14 @@ export default function App() {
                   >
                     <ListIcon className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">List</span>
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('gantt')}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'gantt' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    title="Gantt View"
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Gantt</span>
                   </button>
                 </div>
 
@@ -2244,6 +2443,7 @@ export default function App() {
                   getPriorityIcon={getPriorityIcon}
                   onRenameColumn={handleRenameColumn}
                   onSortTasks={handleSortTasks}
+                  currentUserRole={currentUserRole}
                 />
               ))}
             </div>
@@ -2292,6 +2492,14 @@ export default function App() {
               })() : null}
             </DragOverlay>
           </DndContext>
+        ) : viewMode === 'gantt' ? (
+          <GanttView 
+            tasks={filteredTasks}
+            onTaskClick={openModal}
+            getPriorityIcon={getPriorityIcon}
+            getAvatarColor={getAvatarColor}
+            getInitials={getInitials}
+          />
         ) : (
           <TaskListView 
             tasks={paginatedTasks} 
@@ -2481,7 +2689,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Request Date</label>
                     <input 
@@ -2499,6 +2707,19 @@ export default function App() {
                       value={formData.due_date}
                       onChange={e => setFormData({ ...formData, due_date: e.target.value })}
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Repeat Task</label>
+                    <select
+                      className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                      value={formData.recurring_pattern}
+                      onChange={e => setFormData({ ...formData, recurring_pattern: e.target.value as 'none' | 'daily' | 'weekly' | 'monthly' })}
+                    >
+                      <option value="none">Does not repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
                   </div>
                 </div>
 
@@ -2665,7 +2886,19 @@ export default function App() {
                           onChange={(e) => updateSubTaskTitle(st.id, e.target.value)}
                           placeholder="What needs to be done?"
                         />
-                        <div className={`flex items-center gap-1 transition-opacity ${st.due_date ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <div className={`flex items-center gap-1 transition-opacity ${st.due_date || (st.assignee && st.assignee !== formData.assignee) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                          <select
+                            className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] text-[10px] rounded px-1.5 py-1 outline-none w-24"
+                            value={st.assignee || ''}
+                            onChange={(e) => updateSubTaskAssignee(st.id, e.target.value)}
+                            title={st.assignee ? `Subtask assigned to: ${st.assignee}` : 'Assign subtask'}
+                          >
+                            <option value="">(Inherit)</option>
+                            {users.map(u => (
+                              <option key={u.id} value={u.name}>{u.name}</option>
+                            ))}
+                            <option value="Unassigned">Unassigned</option>
+                          </select>
                           <div className="relative flex items-center">
                             <CalendarDays className="w-3.5 h-3.5 absolute left-2 text-[var(--text-muted)] pointer-events-none" />
                             <input

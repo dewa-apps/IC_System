@@ -1,7 +1,7 @@
 import { db, auth } from './firebase';
 import { 
   collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, 
-  query, where, orderBy, limit, serverTimestamp, setDoc, arrayUnion, runTransaction
+  query, where, orderBy, limit, serverTimestamp, setDoc, arrayUnion, runTransaction, increment
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -394,7 +394,27 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const q = query(collection(db, 'tasks'), orderBy('created_at', 'desc'), limit(limitVal));
       const snapshot = await getDocs(q);
       const tasks = snapshot.docs.map(formatDoc);
-      return new Response(JSON.stringify(tasks), { status: 200 });
+      
+      // Background migration for old tasks missing counts + immediately return counts
+      const tasksWithCounts = await Promise.all(tasks.map(async (t) => {
+        if (t.comment_count === undefined || t.attachment_count === undefined) {
+           const commentSnap = await getDocs(query(collection(db, 'comments'), where('task_id', '==', t.id)));
+           const attachmentSnap = await getDocs(query(collection(db, 'attachments'), where('task_id', '==', t.id)));
+           
+           const newCounts = {
+             comment_count: commentSnap.size,
+             attachment_count: attachmentSnap.size
+           };
+
+           // Fire and forget update
+           updateDoc(doc(db, 'tasks', t.id), newCounts).catch(e => console.error(e));
+           
+           return { ...t, ...newCounts };
+        }
+        return t;
+      }));
+
+      return new Response(JSON.stringify(tasksWithCounts), { status: 200 });
     }
     
     if (path === 'tasks' && method === 'POST') {
@@ -479,6 +499,69 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           if (oldData.authorName && oldData.authorName !== userName) {
             bgTasks.push(triggerTaskModificationNotification(oldData.authorName, taskTitle, displayId, 'edited', userName));
           }
+          
+          // RECURRING TASKS LOGIC
+          if (body.status && ['DONE', 'CLOSED'].includes(body.status) && oldData.status !== body.status) {
+            const recurringPattern = body.recurring_pattern || oldData.recurring_pattern;
+            if (recurringPattern && recurringPattern !== 'none' && !oldData.recurring_spawned) {
+              const spawnRecurringTask = async () => {
+                const nextDate = new Date(body.due_date || oldData.due_date || new Date());
+                if (recurringPattern === 'daily') nextDate.setDate(nextDate.getDate() + 1);
+                else if (recurringPattern === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+                else if (recurringPattern === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+                
+                const nextDateStr = nextDate.toISOString().split('T')[0];
+
+                const dbInstance = db;
+                const newDocId = doc(collection(dbInstance, 'tasks')).id;
+                const newTaskRef = doc(dbInstance, 'tasks', newDocId);
+                const metadataRef = doc(dbInstance, 'metadata', 'taskSequence');
+
+                await runTransaction(dbInstance, async (transaction) => {
+                  const metadataDoc = await transaction.get(metadataRef);
+                  let nextNum = 1;
+                  if (!metadataDoc.exists()) {
+                    transaction.set(metadataRef, { lastNumber: 1 });
+                  } else {
+                    nextNum = metadataDoc.data().lastNumber + 1;
+                    transaction.update(metadataRef, { lastNumber: nextNum });
+                  }
+                  
+                  const newDisplayId = `IC-${String(nextNum).padStart(5, '0')}`;
+                  
+                  // Make sure we carry over fields safely
+                  const mergedData = { ...oldData, ...body };
+                  // We do NOT copy subtasks fully completed. Or maybe we shouldn't copy subtasks here out of simplicity.
+                  // Just copy core info.
+                  transaction.set(newTaskRef, {
+                    title: mergedData.title,
+                    description: mergedData.description || '',
+                    status: 'TODO',
+                    priority: mergedData.priority,
+                    assignee: mergedData.assignee || '',
+                    request_date: new Date().toISOString().split('T')[0],
+                    due_date: nextDateStr,
+                    category: mergedData.category || '',
+                    brand: mergedData.brand || '',
+                    requestor: mergedData.requestor || '',
+                    division: mergedData.division || '',
+                    recurring_pattern: recurringPattern,
+                    
+                    authorId: mergedData.authorId || userId,
+                    authorName: mergedData.authorName || userName,
+                    task_number: nextNum,
+                    display_id: newDisplayId,
+                    created_at: serverTimestamp(),
+                    updated_at: serverTimestamp()
+                  });
+                  // Mark the old one as spawned
+                  transaction.update(taskRef, { recurring_spawned: true });
+                });
+                console.log("Spawned recurring task");
+              };
+              bgTasks.push(spawnRecurringTask());
+            }
+          }
         }
         
         Promise.all(bgTasks).catch(err => console.error("Error in task update side effects", err));
@@ -522,7 +605,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       // Run side-effects in background
       Promise.all([
         logActivity(taskId, "Added comment", body.content.substring(0, 50)),
-        triggerCommentNotification(taskId, body.content, userName)
+        triggerCommentNotification(taskId, body.content, userName),
+        updateDoc(doc(db, 'tasks', taskId), { comment_count: increment(1) })
       ]).catch(err => console.error("Error in comment side effects", err));
       
       const newDoc = await getDoc(docRef);
@@ -564,8 +648,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       }
       
       if (method === 'DELETE') {
+        const taskId = commentDoc.data().task_id;
         // Run log in background
-        logActivity(commentDoc.data().task_id, "Deleted comment", "Comment deleted").catch(e => console.error(e));
+        Promise.all([
+          logActivity(taskId, "Deleted comment", "Comment deleted"),
+          updateDoc(doc(db, 'tasks', taskId), { comment_count: increment(-1) })
+        ]).catch(e => console.error(e));
         await deleteDoc(commentRef);
         return new Response(null, { status: 204 });
       }
@@ -764,7 +852,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         created_at: serverTimestamp()
       });
 
-      logActivity(taskId, "Uploaded attachment", file.name).catch(e => console.error(e));
+      Promise.all([
+        logActivity(taskId, "Uploaded attachment", file.name),
+        updateDoc(doc(db, 'tasks', taskId), { attachment_count: increment(1) })
+      ]).catch(e => console.error(e));
+      
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });
     }
@@ -783,7 +875,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       if (attachmentDoc.exists()) {
         const data = attachmentDoc.data();
         await deleteDoc(doc(db, 'attachments', attachmentId));
-        logActivity(data.task_id, "Deleted attachment", data.original_name).catch(e => console.error(e));
+        Promise.all([
+          logActivity(data.task_id, "Deleted attachment", data.original_name),
+          updateDoc(doc(db, 'tasks', data.task_id), { attachment_count: increment(-1) })
+        ]).catch(e => console.error(e));
       }
       return new Response(null, { status: 204 });
     }

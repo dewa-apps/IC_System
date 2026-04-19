@@ -31,6 +31,7 @@ export interface SubTask {
   title: string;
   completed: boolean;
   due_date?: string;
+  assignee?: string;
 }
 
 export interface Template {
@@ -70,6 +71,9 @@ export interface Task {
   created_at: string;
   authorName?: string;
   subtasks?: SubTask[];
+  comment_count?: number;
+  attachment_count?: number;
+  recurring_pattern?: 'none' | 'daily' | 'weekly' | 'monthly';
 }
 
 export type TaskStatus = Task['status'];

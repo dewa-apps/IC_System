@@ -112,11 +112,19 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
   }, [filteredTasks]);
 
   const assigneeData = useMemo(() => {
-    const counts = filteredTasks.reduce((acc, task) => {
+    const counts: Record<string, number> = {};
+    
+    filteredTasks.forEach(task => {
       const assignee = task.assignee || 'Unassigned';
-      acc[assignee] = (acc[assignee] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+      counts[assignee] = (counts[assignee] || 0) + 1;
+      
+      if (task.subtasks) {
+        task.subtasks.forEach(st => {
+          const stAssignee = st.assignee || task.assignee || 'Unassigned';
+          counts[stAssignee] = (counts[stAssignee] || 0) + 1;
+        });
+      }
+    });
     
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))

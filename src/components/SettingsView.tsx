@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { auth } from '../firebase';
-import { User, Bell, Palette, Users, Trash2, Edit2, Plus, Loader2 } from 'lucide-react';
-import { User as AppUser } from '../types';
+import { User, Bell, Palette, Users, Trash2, Edit2, Plus, Loader2, Database } from 'lucide-react';
+import { User as AppUser, Task } from '../types';
 import { apiFetch } from '../apiInterceptor';
 
 interface SettingsViewProps {
@@ -33,6 +33,61 @@ export default function SettingsView({
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [isDeduplicating, setIsDeduplicating] = useState(false);
+
+  const handleDeduplicate = async () => {
+    try {
+        setIsDeduplicating(true);
+        // Fetch all recent tasks
+        const res = await apiFetch('/api/tasks?limit=5000');
+        const allTasks: Task[] = await res.json();
+        
+        const mapDisplayIdToTasks = new Map<string, Task[]>();
+        allTasks.forEach((t) => {
+            if (t.display_id) {
+                if (!mapDisplayIdToTasks.has(t.display_id)) mapDisplayIdToTasks.set(t.display_id, []);
+                mapDisplayIdToTasks.get(t.display_id)!.push(t);
+            }
+        });
+        
+        const toDeleteIds: string[] = [];
+        
+        mapDisplayIdToTasks.forEach((tasksList) => {
+            if (tasksList.length > 1) {
+                // Sort by created_at desc (newest first)
+                tasksList.sort((a, b) => {
+                  const dateB = typeof b.created_at === 'string' || typeof b.created_at === 'number' ? new Date(b.created_at as any).getTime() : 0;
+                  const dateA = typeof a.created_at === 'string' || typeof a.created_at === 'number' ? new Date(a.created_at as any).getTime() : 0;
+                  return dateB - dateA;
+                });
+                // Keep the first (newest), delete the rest
+                tasksList.slice(1).forEach(t => toDeleteIds.push(t.id as string));
+            }
+        });
+        
+        if (toDeleteIds.length === 0) {
+            alert('Database is clean. No duplicates found.');
+            return;
+        }
+        
+        const confirmed = window.confirm(`Found ${toDeleteIds.length} duplicate tasks over ${mapDisplayIdToTasks.size} unique Task IDs. Do you want to permanently delete the older duplicates and keep only the latest version of each task?`);
+        if (!confirmed) return;
+        
+        let deletedCount = 0;
+        for (const id of toDeleteIds) {
+            const delRes = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+            if (delRes.ok) deletedCount++;
+        }
+        
+        alert(`Deduplication complete. Deleted ${deletedCount} older duplicate tasks.`);
+        if (typeof window !== 'undefined') window.location.reload();
+    } catch (err) {
+        console.error(err);
+        alert('An error occurred during deduplication.');
+    } finally {
+        setIsDeduplicating(false);
+    }
+  };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +191,19 @@ export default function SettingsView({
                 >
                   <Users className="w-4 h-4" />
                   User Management
+                </button>
+              )}
+              {currentUserRole === 'admin' && (
+                <button
+                  onClick={() => setActiveTab('data')}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'data' 
+                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' 
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]'
+                  }`}
+                >
+                  <Database className="w-4 h-4" />
+                  Data Management
                 </button>
               )}
             </nav>
@@ -426,6 +494,49 @@ export default function SettingsView({
                       )}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'data' && currentUserRole === 'admin' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Data Management</h2>
+                  <p className="text-sm text-[var(--text-muted)]">Manage your workspace data and run advanced clean up tasks.</p>
+                </div>
+                
+                <div className="p-5 border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0 mt-1 text-red-600 dark:text-red-400">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-red-800 dark:text-red-300">Clean Duplicate Tasks</h3>
+                      <p className="text-sm text-red-700/80 dark:text-red-300/80 mt-1 mb-4">
+                        This action will scan all tasks in the database and group them by their Task ID (e.g., IC-00001). 
+                        If multiples are found, it permanently deletes the older copies and only retains the newest one.
+                        This cannot be undone.
+                      </p>
+                      
+                      <button 
+                        onClick={handleDeduplicate}
+                        disabled={isDeduplicating}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors"
+                      >
+                        {isDeduplicating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Cleaning Database...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4" />
+                            Start Clean Up
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

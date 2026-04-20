@@ -1378,10 +1378,12 @@ export default function App() {
 
   const fetchTasks = async () => {
     try {
-      const res = await apiFetch(`/api/tasks?limit=${taskLimit}`);
+      const res = await apiFetch(`/api/tasks?limit=5000`);
       const data = await res.json();
       setTasks(data);
-      setHasMoreTasks(data.length >= taskLimit);
+      // setHasMoreTasks is no longer strictly bound since we fetch practically all relevant tasks, 
+      // but keeping the var mapping to stay safe.
+      setHasMoreTasks(data.length >= 5000);
     } catch (err) {
       console.error('Failed to fetch tasks:', err);
     } finally {

@@ -389,7 +389,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       
       const urlObj = new URL(url, window.location.origin);
       const limitParam = urlObj.searchParams.get('limit');
-      const limitVal = limitParam ? parseInt(limitParam, 10) : 100;
+      const limitVal = limitParam ? parseInt(limitParam, 10) : 5000;
 
       const q = query(collection(db, 'tasks'), orderBy('created_at', 'desc'), limit(limitVal));
       const snapshot = await getDocs(q);

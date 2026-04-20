@@ -1016,19 +1016,48 @@ export default function App() {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          const imports = results.data.map((row: any) => ({
-            title: row.Title || 'Imported Task',
-            description: row.Description || '',
-            status: row.Status || 'TODO',
-            priority: row.Priority || 'MEDIUM',
-            assignee: row.Assignee === 'Unassigned' ? '' : row.Assignee || '',
-            category: row.Category || '',
-            brand: row.Brand || '',
-            requestor: row.Requestor || '',
-            division: row.Division || '',
-            request_date: row['Request Date'] || getJakartaToday(),
-            due_date: row['Due Date'] || '',
-          }));
+          const imports = results.data.map((row: any) => {
+            // Format Dates appropriately if they are in D/M/YYYY or similar format
+            const formatDate = (dateStr: string) => {
+              if (!dateStr) return '';
+              try {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                  // Assuming MM/DD/YYYY or M/D/YYYY
+                  const dt = new Date(`${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}T00:00:00Z`);
+                  if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+                }
+                const dt = new Date(dateStr);
+                if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+              } catch (e) {
+                return '';
+              }
+              return '';
+            }
+
+            const taskData: any = {
+              title: row.Title || 'Imported Task',
+              description: row.Description || '',
+              status: row.Status || 'TODO',
+              priority: row.Priority || 'MEDIUM',
+              assignee: row.Assignee === 'Unassigned' ? '' : row.Assignee || '',
+              category: row.Category || '',
+              brand: row.Brand || '',
+              requestor: row.Requestor || '',
+              division: row.Division || '',
+              request_date: formatDate(row['Request Date']) || getJakartaToday(),
+              due_date: formatDate(row['Due Date']) || '',
+            };
+
+            // Parse optional advanced fields overrides securely
+            if (row['Task ID'] || row['display_id']) taskData.display_id = row['Task ID'] || row['display_id'];
+            if (row['Created By'] || row['authorName']) taskData.authorName = row['Created By'] || row['authorName'];
+            if (row['authorId']) taskData.authorId = row['authorId'];
+            if (row['task_number']) taskData.task_number = parseInt(row['task_number'], 10);
+            if (row['Created At'] || row['created_at']) taskData.created_at = row['Created At'] || row['created_at'];
+
+            return taskData;
+          });
 
           let successCount = 0;
           for (const taskData of imports) {

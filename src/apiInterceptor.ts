@@ -429,28 +429,52 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const metadataRef = doc(dbInstance, 'metadata', 'taskSequence');
 
       let nextNum = 1;
-      let displayId = '';
+      let generatedDisplayId = '';
 
       await runTransaction(dbInstance, async (transaction) => {
         const metadataDoc = await transaction.get(metadataRef);
         
-        if (!metadataDoc.exists()) {
-          nextNum = 1;
-          transaction.set(metadataRef, { lastNumber: 1 });
-        } else {
-          nextNum = metadataDoc.data().lastNumber + 1;
-          transaction.update(metadataRef, { lastNumber: nextNum });
+        let currentMax = metadataDoc.exists() ? metadataDoc.data().lastNumber : 0;
+        
+        // If task_number is provided in the import payload, we use it.
+        let parsedTaskNumber = body.task_number ? parseInt(body.task_number, 10) : null;
+        
+        if (!parsedTaskNumber && body.display_id) {
+           const match = body.display_id.match(/IC-(\d+)/);
+           if (match && match[1]) {
+             parsedTaskNumber = parseInt(match[1], 10);
+           }
         }
         
-        displayId = `IC-${String(nextNum).padStart(5, '0')}`;
+        if (parsedTaskNumber && !isNaN(parsedTaskNumber)) {
+          nextNum = parsedTaskNumber;
+          // Update the sequence only if the imported number is higher
+          if (nextNum > currentMax) {
+            transaction.set(metadataRef, { lastNumber: nextNum }, { merge: true });
+          }
+        } else {
+          nextNum = currentMax + 1;
+          transaction.set(metadataRef, { lastNumber: nextNum }, { merge: true });
+        }
         
+        generatedDisplayId = `IC-${String(nextNum).padStart(5, '0')}`;
+        
+        const finalDisplayId = body.display_id || generatedDisplayId;
+        const finalAuthorId = body.authorId || userId;
+        const finalAuthorName = body.authorName || userName;
+        
+        let finalCreatedAt: any = serverTimestamp();
+        if (body.created_at) {
+          finalCreatedAt = new Date(body.created_at);
+        }
+
         transaction.set(taskRef, {
           ...body,
-          authorId: userId,
-          authorName: userName,
+          authorId: finalAuthorId,
+          authorName: finalAuthorName,
           task_number: nextNum,
-          display_id: displayId,
-          created_at: serverTimestamp(),
+          display_id: finalDisplayId,
+          created_at: finalCreatedAt,
           updated_at: serverTimestamp()
         });
       });
@@ -459,7 +483,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       Promise.all([
         logActivity(newDocId, "Created task", `Title: ${body.title}`),
         updateDropdownMetadata(body),
-        body.assignee ? triggerAssignmentNotification(body.assignee, body.title, displayId, userName) : Promise.resolve()
+        body.assignee ? triggerAssignmentNotification(body.assignee, body.title, body.display_id || generatedDisplayId, userName) : Promise.resolve()
       ]).catch(err => console.error("Error in task creation side-effects:", err));
       
       const newDoc = await getDoc(taskRef);

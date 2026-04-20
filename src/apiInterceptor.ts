@@ -465,7 +465,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         
         let finalCreatedAt: any = serverTimestamp();
         if (body.created_at) {
-          finalCreatedAt = new Date(body.created_at);
+          const dt = new Date(body.created_at);
+          if (!isNaN(dt.getTime())) {
+            finalCreatedAt = dt;
+          }
         }
 
         transaction.set(taskRef, {
@@ -500,10 +503,20 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         const oldDoc = await getDoc(taskRef);
         const oldData = oldDoc.exists() ? oldDoc.data() : null;
         
-        await updateDoc(taskRef, {
+        const updatePayload: any = {
           ...body,
           updated_at: serverTimestamp()
-        });
+        };
+
+        // Don't overwrite immutable fields during PATCH unless explicitly necessary
+        if ('created_at' in updatePayload) {
+          delete updatePayload.created_at; 
+        }
+        if ('authorId' in updatePayload) {
+          delete updatePayload.authorId;
+        }
+
+        await updateDoc(taskRef, updatePayload);
         
         // Background tasks
         const bgTasks: Promise<any>[] = [

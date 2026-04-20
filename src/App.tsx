@@ -1035,11 +1035,14 @@ export default function App() {
               return '';
             }
 
+            const rawStatus = (row.Status || '').trim().toUpperCase();
+            const rawPriority = (row.Priority || '').trim().toUpperCase();
+
             const taskData: any = {
               title: row.Title || 'Imported Task',
               description: row.Description || '',
-              status: row.Status || 'TODO',
-              priority: row.Priority || 'MEDIUM',
+              status: ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE', 'CLOSED'].includes(rawStatus) ? rawStatus : 'TODO',
+              priority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(rawPriority) ? rawPriority : 'MEDIUM',
               assignee: row.Assignee === 'Unassigned' ? '' : row.Assignee || '',
               category: row.Category || '',
               brand: row.Brand || '',
@@ -1061,12 +1064,29 @@ export default function App() {
 
           let successCount = 0;
           for (const taskData of imports) {
-            const res = await apiFetch('/api/tasks', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(taskData)
-            });
-            if (res.ok) successCount++;
+            // Find existing task by display_id or ID
+            const existingTask = tasks.find((t: any) => 
+               (taskData.display_id && t.display_id === taskData.display_id) || 
+               (taskData.display_id && `IC-${t.id}` === taskData.display_id)
+            );
+
+            if (existingTask) {
+              // Update/overwrite existing task
+              const res = await apiFetch(`/api/tasks/${existingTask.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(taskData)
+              });
+              if (res.ok) successCount++;
+            } else {
+              // Create new task
+              const res = await apiFetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(taskData)
+              });
+              if (res.ok) successCount++;
+            }
           }
           
           alert(`Successfully imported ${successCount} out of ${imports.length} tasks.`);

@@ -2384,12 +2384,22 @@ export default function App() {
                 />
                 <button 
                   onClick={() => importInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-l text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
                   title="Import Tasks from CSV"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Import</span>
                 </button>
+                <a 
+                  href="/task_import_template.csv" 
+                  download
+                  className="flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg-surface)] border-y border-r border-[var(--border-color)] text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                  title="Download CSV Template"
+                >
+                  Template
+                </a>
+
+                <div className="w-px h-6 bg-[var(--border-color)] mx-1" />
 
                 <button 
                   onClick={handleExportData}

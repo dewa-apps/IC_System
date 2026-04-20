@@ -71,6 +71,7 @@ import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import RichTextEditor from './components/RichTextEditor';
 import GanttView from './components/GanttView';
+import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
 const stripHtml = (html: string) => {
@@ -1002,6 +1003,56 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const importInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const imports = results.data.map((row: any) => ({
+            title: row.Title || 'Imported Task',
+            description: row.Description || '',
+            status: row.Status || 'TODO',
+            priority: row.Priority || 'MEDIUM',
+            assignee: row.Assignee === 'Unassigned' ? '' : row.Assignee || '',
+            category: row.Category || '',
+            brand: row.Brand || '',
+            requestor: row.Requestor || '',
+            division: row.Division || '',
+            request_date: row['Request Date'] || getJakartaToday(),
+            due_date: row['Due Date'] || '',
+          }));
+
+          let successCount = 0;
+          for (const taskData of imports) {
+            const res = await apiFetch('/api/tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(taskData)
+            });
+            if (res.ok) successCount++;
+          }
+          
+          alert(`Successfully imported ${successCount} out of ${imports.length} tasks.`);
+          fetchTasks(); // Refresh list
+        } catch (error) {
+          console.error("Import error:", error);
+          alert("An error occurred during import.");
+        }
+      }
+    });
+    
+    // reset input
+    if (importInputRef.current) {
+        importInputRef.current.value = '';
+    }
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -2323,6 +2374,22 @@ export default function App() {
                 </div>
 
                 <div className="w-px h-6 bg-[var(--border-color)] mx-1" />
+
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  ref={importInputRef}
+                  onChange={handleImportData}
+                />
+                <button 
+                  onClick={() => importInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                  title="Import Tasks from CSV"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Import</span>
+                </button>
 
                 <button 
                   onClick={handleExportData}

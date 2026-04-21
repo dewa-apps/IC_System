@@ -127,7 +127,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if false;
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /task_links/{linkId} {

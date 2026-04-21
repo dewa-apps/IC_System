@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { auth } from '../firebase';
-import { User, Bell, Palette, Users, Trash2, Edit2, Plus, Loader2, Database } from 'lucide-react';
+import { auth, db } from '../firebase';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { User, Bell, Palette, Users, Trash2, Edit2, Plus, Loader2, Database, AlertTriangle } from 'lucide-react';
 import { User as AppUser, Task } from '../types';
 import { apiFetch } from '../apiInterceptor';
+import toast from 'react-hot-toast';
 
 interface SettingsViewProps {
   users: AppUser[];
@@ -34,8 +36,9 @@ export default function SettingsView({
   const [isDeletingUser, setIsDeletingUser] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isDeduplicating, setIsDeduplicating] = useState(false);
+  const [deduplicateData, setDeduplicateData] = useState<{toDeleteIds: string[], displaySize: number} | null>(null);
 
-  const handleDeduplicate = async () => {
+  const checkDeduplicate = async () => {
     try {
         setIsDeduplicating(true);
         // Fetch all recent tasks
@@ -66,26 +69,100 @@ export default function SettingsView({
         });
         
         if (toDeleteIds.length === 0) {
-            alert('Database is clean. No duplicates found.');
+            toast.success('Database is clean. No duplicates found.');
+            setIsDeduplicating(false);
             return;
         }
         
-        const confirmed = window.confirm(`Found ${toDeleteIds.length} duplicate tasks over ${mapDisplayIdToTasks.size} unique Task IDs. Do you want to permanently delete the older duplicates and keep only the latest version of each task?`);
-        if (!confirmed) return;
-        
+        setDeduplicateData({ toDeleteIds, displaySize: mapDisplayIdToTasks.size });
+    } catch (err) {
+        console.error(err);
+        toast.error('An error occurred during deduplication scan.');
+        setIsDeduplicating(false);
+    }
+  };
+
+  const executeDeduplicate = async () => {
+    if (!deduplicateData) return;
+    try {
         let deletedCount = 0;
-        for (const id of toDeleteIds) {
+        for (const id of deduplicateData.toDeleteIds) {
             const delRes = await apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
             if (delRes.ok) deletedCount++;
         }
         
-        alert(`Deduplication complete. Deleted ${deletedCount} older duplicate tasks.`);
+        toast.success(`Deduplication complete. Deleted ${deletedCount} older duplicate tasks.`);
         if (typeof window !== 'undefined') window.location.reload();
     } catch (err) {
         console.error(err);
-        alert('An error occurred during deduplication.');
+        toast.error('An error occurred during deduplication deletion.');
     } finally {
         setIsDeduplicating(false);
+        setDeduplicateData(null);
+    }
+  };
+
+  const [isClearingLogs, setIsClearingLogs] = useState(false);
+  const [showClearLogsConfirm, setShowClearLogsConfirm] = useState(false);
+  const [clearOptions, setClearOptions] = useState({
+    readNotifications: true,
+    oldActivityLogs: true
+  });
+
+  const executeClearLogs = async () => {
+    try {
+        setIsClearingLogs(true);
+        let deletedCount = 0;
+        
+        if (clearOptions.oldActivityLogs) {
+            // Identify old tasks that are completed/closed
+            const res = await apiFetch('/api/tasks?limit=5000');
+            const allTasks: Task[] = await res.json();
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+            const targetTaskIds = new Set(
+                allTasks
+                    .filter(t => {
+                        if (t.status !== 'DONE' && t.status !== 'CLOSED') return false;
+                        const created = typeof t.created_at === 'string' || typeof t.created_at === 'number' 
+                          ? new Date(t.created_at as any) 
+                          : new Date();
+                        return created < oneYearAgo;
+                    })
+                    .map(t => t.id)
+            );
+
+            // Fetch and loop to delete activity_log
+            const activityQ = await getDocs(collection(db, 'activity_log'));
+            for (const actDoc of activityQ.docs) {
+                const data = actDoc.data();
+                if (data.task_id && targetTaskIds.has(data.task_id)) {
+                    await deleteDoc(doc(db, 'activity_log', actDoc.id));
+                    deletedCount++;
+                }
+            }
+        }
+
+        if (clearOptions.readNotifications) {
+            // Fetch and loop to delete notifications
+            const notifQ = await getDocs(collection(db, 'notifications'));
+            for (const notifDoc of notifQ.docs) {
+                const data = notifDoc.data();
+                if (data.read === true) {
+                    await deleteDoc(doc(db, 'notifications', notifDoc.id));
+                    deletedCount++;
+                }
+            }
+        }
+
+        toast.success(`Successfully deleted ${deletedCount} logs and notifications.`);
+    } catch (err) {
+        console.error(err);
+        toast.error('An error occurred during log clearing.');
+    } finally {
+        setIsClearingLogs(false);
+        setShowClearLogsConfirm(false);
     }
   };
 
@@ -107,13 +184,14 @@ export default function SettingsView({
         setIsAddingUser(false);
         setUserFormData({ name: '', email: '', role: 'user' });
         onUsersChange();
+        toast.success(isEditingUser ? 'User updated successfully' : 'User added successfully');
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to save user');
+        toast.error(error.error || 'Failed to save user');
       }
     } catch (err) {
       console.error('Failed to save user:', err);
-      alert('Failed to save user');
+      toast.error('Failed to save user');
     } finally {
       setIsSavingUser(false);
     }
@@ -126,13 +204,14 @@ export default function SettingsView({
       if (res.ok) {
         setUserToDelete(null);
         onUsersChange();
+        toast.success('User deleted successfully');
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to delete user');
+        toast.error(error.error || 'Failed to delete user');
       }
     } catch (err) {
       console.error('Failed to delete user:', err);
-      alert('Failed to delete user');
+      toast.error('Failed to delete user');
     } finally {
       setIsDeletingUser(null);
     }
@@ -519,14 +598,14 @@ export default function SettingsView({
                       </p>
                       
                       <button 
-                        onClick={handleDeduplicate}
+                        onClick={checkDeduplicate}
                         disabled={isDeduplicating}
                         className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors"
                       >
-                        {isDeduplicating ? (
+                        {isDeduplicating && !deduplicateData ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            Cleaning Database...
+                            Scanning Database...
                           </>
                         ) : (
                           <>
@@ -536,6 +615,148 @@ export default function SettingsView({
                         )}
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                <div className="p-5 border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0 mt-1 text-red-600 dark:text-red-400">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-red-800 dark:text-red-300">Clear Logs & Notifications</h3>
+                      <p className="text-sm text-red-700/80 dark:text-red-300/80 mt-1 mb-4">
+                        This action will permanently delete all activity logs and notifications from your database.
+                        This is useful for clearing out spam after performing bulk migrations. This cannot be undone.
+                      </p>
+                      
+                      <button 
+                        onClick={() => setShowClearLogsConfirm(true)}
+                        disabled={isClearingLogs}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded shadow-sm disabled:opacity-50 transition-colors"
+                      >
+                        {isClearingLogs ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Deleting Logs...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4" />
+                            Clear All Logs
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Deduplication Confirmation Modal */}
+            {deduplicateData && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-[var(--bg-surface)] rounded-lg shadow-xl max-w-md w-full p-6 border border-[var(--border-color)]">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)]">Confirm Deduplication</h3>
+                  </div>
+                  <p className="text-[var(--text-secondary)] mb-6">
+                    Found <span className="font-bold text-[var(--text-primary)]">{deduplicateData.toDeleteIds.length}</span> duplicate tasks over <span className="font-bold text-[var(--text-primary)]">{deduplicateData.displaySize}</span> unique Task IDs.
+                    <br /><br />
+                    Do you want to permanently delete the older duplicates and keep only the latest version of each task? This action cannot be undone.
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setDeduplicateData(null);
+                        setIsDeduplicating(false);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={executeDeduplicate}
+                      disabled={isDeduplicating}
+                      className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-md transition-colors flex items-center gap-2"
+                    >
+                      {isDeduplicating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : 'Delete Duplicates'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Clear Logs Confirmation Modal */}
+            {showClearLogsConfirm && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-[var(--bg-surface)] rounded-lg shadow-xl max-w-md w-full p-6 border border-[var(--border-color)]">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)]">Clean Up Old Logs</h3>
+                  </div>
+                  
+                  <p className="text-[var(--text-secondary)] mb-4 text-sm">
+                    Select exactly what you want to delete. This action is permanent and cannot be undone.
+                  </p>
+
+                  <div className="space-y-3 mb-6 bg-[var(--bg-secondary)] p-4 rounded-lg border border-[var(--border-color)]">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
+                        checked={clearOptions.readNotifications}
+                        onChange={(e) => setClearOptions(prev => ({...prev, readNotifications: e.target.checked}))}
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-[var(--text-primary)]">Read Notifications</span>
+                        <span className="block text-xs text-[var(--text-muted)]">Only delete notifications that have already been marked as read.</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-600"
+                        checked={clearOptions.oldActivityLogs}
+                        onChange={(e) => setClearOptions(prev => ({...prev, oldActivityLogs: e.target.checked}))}
+                      />
+                      <div>
+                        <span className="block text-sm font-medium text-[var(--text-primary)]">Old Activity Logs</span>
+                        <span className="block text-xs text-[var(--text-muted)]">Only delete activity logs for tasks that are DONE/CLOSED and created &gt; 1 year ago.</span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowClearLogsConfirm(false)}
+                      className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={executeClearLogs}
+                      disabled={isClearingLogs || (!clearOptions.readNotifications && !clearOptions.oldActivityLogs)}
+                      className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-md transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isClearingLogs ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : 'Confirm Delete'}
+                    </button>
                   </div>
                 </div>
               </div>

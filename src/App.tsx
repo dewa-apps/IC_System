@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { apiFetch } from './apiInterceptor';
+import { apiFetch, formatDoc } from './apiInterceptor';
 import { auth, db } from './firebase';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { 
   Layout, 
   CheckSquare,
@@ -874,6 +875,7 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
@@ -1089,11 +1091,15 @@ export default function App() {
             }
           }
           
-          alert(`Successfully imported ${successCount} out of ${imports.length} tasks.`);
+          if (successCount === imports.length) {
+            toast.success(`Successfully imported ${successCount} tasks`);
+          } else {
+            toast.success(`Imported ${successCount} out of ${imports.length} tasks`);
+          }
           fetchTasks(); // Refresh list
         } catch (error) {
           console.error("Import error:", error);
-          alert("An error occurred during import.");
+          toast.error("An error occurred during import.");
         }
       }
     });
@@ -1282,13 +1288,7 @@ export default function App() {
   };
 
   const fetchTaskLinks = async (taskId: string | number) => {
-    try {
-      const res = await apiFetch(`/api/tasks/${taskId}/links`);
-      const data = await res.json();
-      setTaskLinks(data);
-    } catch (err) {
-      console.error('Failed to fetch task links:', err);
-    }
+    // Left as placeholder
   };
 
   const handleAddLink = async (targetTaskId: string | number) => {
@@ -1308,12 +1308,14 @@ export default function App() {
       if (res.ok) {
         fetchTaskLinks(editingTask.id);
         setLinkSearchQuery('');
+        toast.success("Task linked successfully");
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to link task');
+        toast.error(error.error || 'Failed to link task');
       }
     } catch (err) {
       console.error('Failed to link task:', err);
+      toast.error('Failed to link task');
     } finally {
       setIsLinkingTask(false);
     }
@@ -1323,104 +1325,123 @@ export default function App() {
     if (!editingTask) return;
     setIsRemovingLink(linkId);
     try {
-      await apiFetch(`/api/task-links/${linkId}?user=${encodeURIComponent(currentUserName)}`, {
+      const res = await apiFetch(`/api/task-links/${linkId}?user=${encodeURIComponent(currentUserName)}`, {
         method: 'DELETE'
       });
-      fetchTaskLinks(editingTask.id);
+      if (res.ok) {
+        fetchTaskLinks(editingTask.id);
+        toast.success("Link removed successfully");
+      } else {
+        toast.error("Failed to remove link");
+      }
     } catch (err) {
       console.error('Failed to remove link:', err);
+      toast.error('Failed to remove link');
     } finally {
       setIsRemovingLink(null);
     }
   };
 
   const fetchUsers = async () => {
-    try {
-      const res = await apiFetch('/api/users');
-      const data = await res.json();
-      setUsers(data);
-      
-      if (currentUser) {
-        const me = data.find((u: AppUser) => u.email === currentUser.email);
-        if (me) {
-          setCurrentUserRole(me.role);
-          setIsAccessDenied(false);
-        } else {
-          // Check if we are the very first user (bootstrapping admin)
-          if (data.length === 0 && currentUser.email === 'dewangga@sirclo.com') {
-            const syncRes = await apiFetch('/api/users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: currentUserName,
-                email: currentUser.email,
-                role: 'admin'
-              })
-            });
-            if (syncRes.ok) {
-              const newUser = await syncRes.json();
-              setUsers(prev => {
-                if (prev.some(u => u.id === newUser.id)) return prev;
-                return [...prev, newUser];
-              });
-              setCurrentUserRole(newUser.role);
-              setIsAccessDenied(false);
-            }
-          } else {
-            setIsAccessDenied(true);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch users:', err);
-    }
-  };
-
-  const fetchTasks = async () => {
-    try {
-      const res = await apiFetch(`/api/tasks?limit=5000`);
-      const data = await res.json();
-      setTasks(data);
-      // setHasMoreTasks is no longer strictly bound since we fetch practically all relevant tasks, 
-      // but keeping the var mapping to stay safe.
-      setHasMoreTasks(data.length >= 5000);
-    } catch (err) {
-      console.error('Failed to fetch tasks:', err);
-    } finally {
-      setLoading(false);
-    }
+    // left as placeholder if any components explicitly call it directly
   };
 
   useEffect(() => {
-    if (currentUser) {
-      fetchTasks();
-    }
-  }, [taskLimit]);
+    if (!currentUser) return;
+    
+    const unsubscribe = onSnapshot(collection(db, 'users'), async (snapshot) => {
+      const data = snapshot.docs.map(formatDoc) as AppUser[];
+      setUsers(data);
+      
+      const me = data.find((u: AppUser) => u.email === currentUser.email);
+      if (me) {
+        setCurrentUserRole(me.role);
+        setIsAccessDenied(false);
+      } else {
+        // Check if we are the very first user (bootstrapping admin)
+        if (data.length === 0 && currentUser.email === 'dewangga@sirclo.com') {
+          const syncRes = await apiFetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: currentUser.displayName || currentUser.email?.split('@')[0] || 'Unknown',
+              email: currentUser.email,
+              role: 'admin'
+            })
+          });
+          if (syncRes.ok) {
+            const newUser = await syncRes.json();
+            setCurrentUserRole(newUser.role);
+            setIsAccessDenied(false);
+          }
+        } else {
+          setIsAccessDenied(true);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, currentUserName]);
+
+  const fetchTasks = async () => {
+    // Left as placeholder if anything explicitly calls it
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    setLoading(true);
+    const q = query(
+      collection(db, 'tasks'), 
+      orderBy('created_at', 'desc'), 
+      limit(5000)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(formatDoc);
+      setTasks(data);
+      setHasMoreTasks(data.length >= 5000);
+      setLoading(false);
+    }, (error) => {
+      console.error('Failed to fetch tasks:', error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const fetchMetadataOptions = async () => {
-    try {
-      const res = await apiFetch('/api/metadata/dropdowns');
-      const data = await res.json();
-      setMetadataOptions({
-        categories: data.categories || [],
-        brands: data.brands || [],
-        requestors: data.requestors || [],
-        divisions: data.divisions || []
-      });
-    } catch (err) {
-      console.error('Failed to fetch metadata options:', err);
-    }
+    // Placeholder
   };
 
   const fetchTemplates = async () => {
-    try {
-      const res = await apiFetch('/api/templates');
-      const data = await res.json();
-      setTemplates(data);
-    } catch (err) {
-      console.error('Failed to fetch templates:', err);
-    }
+    // Placeholder
   };
+
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const unsubscribeMeta = onSnapshot(doc(db, 'metadata', 'dropdowns'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setMetadataOptions({
+          categories: data.categories || [],
+          brands: data.brands || [],
+          requestors: data.requestors || [],
+          divisions: data.divisions || []
+        });
+      }
+    });
+
+    const unsubscribeTemplates = onSnapshot(collection(db, 'templates'), (snapshot) => {
+      setTemplates(snapshot.docs.map(formatDoc) as Template[]);
+    });
+
+    return () => {
+      unsubscribeMeta();
+      unsubscribeTemplates();
+    };
+  }, [currentUser]);
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) return;
@@ -1442,9 +1463,13 @@ export default function App() {
         setTemplateName('');
         setShowTemplateSave(false);
         fetchTemplates();
+        toast.success("Template saved successfully");
+      } else {
+        toast.error("Failed to save template");
       }
     } catch (err) {
       console.error('Failed to save template:', err);
+      toast.error("Failed to save template");
     } finally {
       setIsSavingTemplate(false);
     }
@@ -1478,9 +1503,13 @@ export default function App() {
         setSelectedTemplateId('');
         setShowTemplateDeleteConfirm(false);
         fetchTemplates();
+        toast.success("Template deleted successfully");
+      } else {
+        toast.error("Failed to delete template");
       }
     } catch (err) {
       console.error('Failed to delete template:', err);
+      toast.error("Failed to delete template");
     } finally {
       setIsDeletingTemplate(false);
     }
@@ -1525,9 +1554,13 @@ export default function App() {
         }
         
         closeModal();
+        toast.success(editingTask ? "Task updated successfully" : "Task created successfully");
+      } else {
+        toast.error("Failed to save task");
       }
     } catch (err) {
       console.error('Failed to save task:', err);
+      toast.error("Failed to save task");
     } finally {
       setIsSavingTask(false);
     }
@@ -1540,12 +1573,14 @@ export default function App() {
       if (res.ok) {
         setTasks(prev => prev.filter(t => t.id !== id));
         closeModal();
+        toast.success("Task deleted successfully");
       } else {
         console.error('Delete failed');
-        alert('Failed to delete task.');
+        toast.error('Failed to delete task.');
       }
     } catch (err) {
       console.error('Failed to delete task:', err);
+      toast.error('Failed to delete task');
     } finally {
       setIsDeletingTask(false);
       setIsDeletingTaskInProgress(false);
@@ -1599,24 +1634,47 @@ export default function App() {
   };
 
   const fetchComments = async (taskId: string | number) => {
-    try {
-      const res = await apiFetch(`/api/tasks/${taskId}/comments`);
-      const data = await res.json();
-      setComments(data);
-    } catch (err) {
-      console.error('Failed to fetch comments:', err);
-    }
+    // Left as placeholder
   };
 
   const fetchActivities = async (taskId: string | number) => {
-    try {
-      const res = await apiFetch(`/api/tasks/${taskId}/activities`);
-      const data = await res.json();
-      setActivities(data);
-    } catch (err) {
-      console.error('Failed to fetch activities:', err);
-    }
+    // Left as placeholder
   };
+
+  useEffect(() => {
+    if (!editingTask?.id) return;
+    
+    // Subscribe to comments
+    const unsubscribeComments = onSnapshot(
+      query(collection(db, 'comments'), where('task_id', '==', editingTask.id), orderBy('created_at', 'desc')), 
+      (snapshot) => { setComments(snapshot.docs.map(formatDoc)); }
+    );
+    
+    // Subscribe to attachments
+    const unsubscribeAttachments = onSnapshot(
+      query(collection(db, 'attachments'), where('task_id', '==', editingTask.id), orderBy('uploaded_at', 'desc')), 
+      (snapshot) => { setAttachments(snapshot.docs.map(formatDoc)); }
+    );
+    
+    // Subscribe to task links
+    const unsubscribeLinks = onSnapshot(
+      query(collection(db, 'task_links'), where('source_task_id', '==', editingTask.id)), 
+      (snapshot) => { setTaskLinks(snapshot.docs.map(formatDoc)); }
+    );
+    
+    // Subscribe to activities
+    const unsubscribeActivities = onSnapshot(
+      query(collection(db, 'activity_log'), where('task_id', '==', editingTask.id), orderBy('created_at', 'desc')), 
+      (snapshot) => { setActivities(snapshot.docs.map(formatDoc)); }
+    );
+
+    return () => {
+      unsubscribeComments();
+      unsubscribeAttachments();
+      unsubscribeLinks();
+      unsubscribeActivities();
+    };
+  }, [editingTask?.id]);
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1638,9 +1696,13 @@ export default function App() {
         fetchComments(editingTask.id);
         fetchActivities(editingTask.id);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, comment_count: (t.comment_count || 0) + 1 } : t));
+        toast.success("Comment added successfully");
+      } else {
+        toast.error("Failed to add comment");
       }
     } catch (err) {
       console.error('Failed to add comment:', err);
+      toast.error("Failed to add comment");
     } finally {
       setIsSubmittingComment(false);
     }
@@ -1655,9 +1717,13 @@ export default function App() {
         fetchComments(editingTask.id);
         fetchActivities(editingTask.id);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, comment_count: Math.max(0, (t.comment_count || 0) - 1) } : t));
+        toast.success("Comment deleted successfully");
+      } else {
+        toast.error("Failed to delete comment");
       }
     } catch (err) {
       console.error('Failed to delete comment:', err);
+      toast.error("Failed to delete comment");
     } finally {
       setIsDeletingComment(false);
     }
@@ -1680,22 +1746,20 @@ export default function App() {
         setEditingCommentContent('');
         fetchComments(editingTask.id);
         fetchActivities(editingTask.id);
+        toast.success("Comment updated successfully");
+      } else {
+        toast.error("Failed to update comment");
       }
     } catch (err) {
       console.error('Failed to update comment:', err);
+      toast.error("Failed to update comment");
     } finally {
       setIsUpdatingComment(false);
     }
   };
 
   const fetchAttachments = async (taskId: string | number) => {
-    try {
-      const res = await apiFetch(`/api/tasks/${taskId}/attachments`);
-      const data = await res.json();
-      setAttachments(data);
-    } catch (err) {
-      console.error('Failed to fetch attachments:', err);
-    }
+    // Left as placeholder
   };
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -1729,12 +1793,13 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to upload file:', err);
-      alert('Failed to upload one or more files.');
+      toast.error('Failed to upload one or more files');
     } finally {
       if (uploadedCount > 0) {
         fetchAttachments(editingTask.id);
         fetchActivities(editingTask.id);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, attachment_count: (t.attachment_count || 0) + uploadedCount } : t));
+        toast.success(`Successfully uploaded ${uploadedCount} file(s)`);
       }
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1758,9 +1823,13 @@ export default function App() {
         fetchAttachments(editingTask.id);
         fetchActivities(editingTask.id);
         setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, attachment_count: Math.max(0, (t.attachment_count || 0) - 1) } : t));
+        toast.success("Attachment deleted successfully");
+      } else {
+        toast.error("Failed to delete attachment");
       }
     } catch (err) {
       console.error('Failed to delete attachment:', err);
+      toast.error("Failed to delete attachment");
     } finally {
       setIsDeletingAttachment(null);
     }
@@ -2433,33 +2502,61 @@ export default function App() {
                   ref={importInputRef}
                   onChange={handleImportData}
                 />
-                <button 
-                  onClick={() => importInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-l text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
-                  title="Import Tasks from CSV"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Import</span>
-                </button>
-                <a 
-                  href="/task_import_template.csv" 
-                  download
-                  className="flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg-surface)] border-y border-r border-[var(--border-color)] text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
-                  title="Download CSV Template"
-                >
-                  Template
-                </a>
+                
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsToolsMenuOpen(!isToolsMenuOpen)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+                    title="Data Tools"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Tools</span>
+                  </button>
 
-                <div className="w-px h-6 bg-[var(--border-color)] mx-1" />
-
-                <button 
-                  onClick={handleExportData}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
-                  title="Export Tasks to CSV"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Export</span>
-                </button>
+                  {isToolsMenuOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsToolsMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-lg rounded-md z-50 overflow-hidden divide-y divide-[var(--border-color)]">
+                        {currentUserRole === 'admin' && (
+                          <>
+                            <button 
+                              onClick={() => {
+                                importInputRef.current?.click();
+                                setIsToolsMenuOpen(false);
+                              }}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-all"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              Import Tasks (CSV)
+                            </button>
+                            <a 
+                              href="/task_import_template.csv" 
+                              download
+                              onClick={() => setIsToolsMenuOpen(false)}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-all"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Download Template
+                            </a>
+                          </>
+                        )}
+                        <button 
+                          onClick={() => {
+                            handleExportData();
+                            setIsToolsMenuOpen(false);
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-all"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export Tasks (CSV)
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-4 shrink-0">

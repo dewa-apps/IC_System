@@ -10,7 +10,7 @@ const storage = getStorage();
 const originalFetch = window.fetch;
 
 // Helper to format Firestore document
-const formatDoc = (docSnapshot: any) => {
+export const formatDoc = (docSnapshot: any) => {
   const data = docSnapshot.data();
   return {
     id: docSnapshot.id,

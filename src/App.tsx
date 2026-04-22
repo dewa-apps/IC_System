@@ -501,6 +501,24 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
   );
 }
 
+const getStatusClasses = (status: string) => {
+  switch (status) {
+    case 'TODO': return 'badge-neutral';
+    case 'IN_PROGRESS': return 'badge-accent';
+    case 'REVIEW': return 'badge-warning';
+    case 'DONE': return 'badge-success';
+    case 'CLOSED': return 'badge-purple';
+    default: return 'badge-neutral';
+  }
+};
+
+const getPageNumbers = (current: number, total: number) => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 4) return [1, 2, 3, 4, 5, '...', total];
+  if (current >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  return [1, '...', current - 1, current, current + 1, '...', total];
+};
+
 interface TaskListViewProps {
   tasks: Task[];
   users: AppUser[];
@@ -537,53 +555,117 @@ function TaskListView({
     return sortOrder === 'asc' ? <ArrowUpAZ className="w-3 h-3" /> : <ArrowUpAZ className="w-3 h-3 rotate-180" />;
   };
 
+  const [colWidths, setColWidths] = React.useState<{ [key: string]: number }>({
+    id: 120,
+    title: 400,
+    status: 150,
+    priority: 150,
+    assignee: 150,
+    author: 150,
+    due_date: 150
+  });
+
+  const [resizingCol, setResizingCol] = React.useState<{ key: string, startX: number, startWidth: number } | null>(null);
+
+  React.useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingCol) return;
+      const displayDx = e.clientX - resizingCol.startX;
+      setColWidths(prev => ({
+        ...prev,
+        [resizingCol.key]: Math.max(50, resizingCol.startWidth + displayDx)
+      }));
+    };
+    const handleMouseUp = () => {
+      setResizingCol(null);
+    };
+    if (resizingCol) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingCol]);
+
+  const handleResizeStart = (e: React.MouseEvent, key: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingCol({ key, startX: e.clientX, startWidth: colWidths[key] || 100 });
+  };
+
+  const ResizeHandle = ({ columnKey }: { columnKey: string }) => (
+    <div 
+      className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent-color)] ${resizingCol?.key === columnKey ? 'bg-[var(--accent-color)] opacity-100' : 'group-hover:bg-[var(--border-color)] opacity-0 group-hover:opacity-100'} transition-colors z-10`}
+      onMouseDown={(e) => handleResizeStart(e, columnKey)}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+
   return (
-    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col h-full transition-colors duration-200">
+    <div className={`bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col h-full transition-colors duration-200 ${resizingCol ? 'select-none' : ''}`}>
       <div className="overflow-auto flex-1">
-        <table className="w-max min-w-full text-left border-collapse whitespace-nowrap relative">
+        <table className="w-max min-w-full text-left border-collapse whitespace-nowrap relative table-fixed" style={{ width: Object.values(colWidths).reduce((a, b) => a + b, 0) }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-[var(--bg-primary)] border-b border-[var(--border-color)] shadow-sm">
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
                 onClick={() => onSort('id')}
+                style={{ width: colWidths.id }}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-hidden">
                   Key <SortIcon field="id" />
                 </div>
+                <ResizeHandle columnKey="id" />
               </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
                 onClick={() => onSort('title')}
+                style={{ width: colWidths.title }}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-hidden">
                   Summary <SortIcon field="title" />
                 </div>
+                <ResizeHandle columnKey="title" />
               </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
                 onClick={() => onSort('status')}
+                style={{ width: colWidths.status }}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-hidden">
                   Status <SortIcon field="status" />
                 </div>
+                <ResizeHandle columnKey="status" />
               </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
                 onClick={() => onSort('priority')}
+                style={{ width: colWidths.priority }}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-hidden">
                   Priority <SortIcon field="priority" />
                 </div>
+                <ResizeHandle columnKey="priority" />
               </th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Assignee</th>
-              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Created By</th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative group" style={{ width: colWidths.assignee }}>
+                <div className="overflow-hidden">Assignee</div>
+                <ResizeHandle columnKey="assignee" />
+              </th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative group" style={{ width: colWidths.author }}>
+                <div className="overflow-hidden">Created By</div>
+                <ResizeHandle columnKey="author" />
+              </th>
               <th 
-                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)]"
+                className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
                 onClick={() => onSort('due_date')}
+                style={{ width: colWidths.due_date }}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 overflow-hidden">
                   Due Date <SortIcon field="due_date" />
                 </div>
+                <ResizeHandle columnKey="due_date" />
               </th>
             </tr>
           </thead>
@@ -600,20 +682,20 @@ function TaskListView({
                   className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors ${isOverdue ? 'bg-[var(--badge-danger-bg)]' : ''}`}
                   onClick={() => onTaskClick(task)}
                 >
-                  <td className="px-4 py-3 text-xs font-bold text-[var(--accent-color)] hover:underline">{task.display_id || `IC-${task.id}`}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-[var(--text-primary)]">{task.title}</span>
+                  <td className="px-4 py-3 text-xs font-bold text-[var(--accent-color)] hover:underline truncate max-w-0">{task.display_id || `IC-${task.id}`}</td>
+                  <td className="px-4 py-3 truncate max-w-0">
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-sm font-medium text-[var(--text-primary)] truncate">{task.title}</span>
                       {task.category && (
-                        <span className="text-[10px] text-[var(--badge-accent-text)] font-medium">{task.category}</span>
+                        <span className="text-[10px] text-[var(--badge-accent-text)] font-medium truncate">{task.category}</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={task.status}
                       onChange={(e) => onInlineUpdate(String(task.id), 'status', e.target.value)}
-                      className="text-[10px] px-2 py-1 bg-[var(--border-color)] text-[var(--text-secondary)] rounded font-bold uppercase whitespace-nowrap outline-none cursor-pointer hover:bg-[var(--bg-secondary)] border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
+                      className={`text-[10px] px-2 py-1 rounded font-bold uppercase whitespace-nowrap outline-none cursor-pointer border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none ${getStatusClasses(task.status)} max-w-full text-ellipsis overflow-hidden`}
                     >
                       <option value="TODO">TODO</option>
                       <option value="IN_PROGRESS">IN PROGRESS</option>
@@ -622,13 +704,13 @@ function TaskListView({
                       <option value="CLOSED">CLOSED</option>
                     </select>
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2">
-                      {getPriorityIcon(task.priority)}
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="shrink-0">{getPriorityIcon(task.priority)}</div>
                       <select
                         value={task.priority}
                         onChange={(e) => onInlineUpdate(String(task.id), 'priority', e.target.value)}
-                        className="text-xs text-[var(--text-secondary)] bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none"
+                        className="text-xs text-[var(--text-secondary)] bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none truncate"
                       >
                         <option value="URGENT">URGENT</option>
                         <option value="HIGH">HIGH</option>
@@ -637,7 +719,7 @@ function TaskListView({
                       </select>
                     </div>
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {(() => {
                         const assignees = Array.from(new Set([
@@ -679,7 +761,7 @@ function TaskListView({
                       <select
                         value={task.assignee || ''}
                         onChange={(e) => onInlineUpdate(String(task.id), 'assignee', e.target.value || null)}
-                        className={`text-xs bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none ${!task.assignee ? 'text-[var(--text-muted)] italic' : 'text-[var(--text-secondary)]'}`}
+                        className={`text-xs bg-transparent outline-none cursor-pointer hover:bg-[var(--bg-secondary)] rounded px-1 py-0.5 border border-transparent hover:border-[var(--border-focus)] transition-colors appearance-none truncate max-w-full ${!task.assignee ? 'text-[var(--text-muted)] italic' : 'text-[var(--text-secondary)]'}`}
                       >
                         <option value="">Unassigned</option>
                         {users.map(u => (
@@ -688,9 +770,9 @@ function TaskListView({
                       </select>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     {task.authorName ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 overflow-hidden">
                         <div 
                           className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
                           style={{ 
@@ -706,11 +788,11 @@ function TaskListView({
                       <span className="text-xs text-[var(--text-muted)] italic">Unknown</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     {task.due_date ? (
-                      <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-[var(--danger-color)] font-bold' : 'text-[var(--text-secondary)]'}`}>
-                        {isOverdue && <Clock className="w-3 h-3" />}
-                        {new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })}
+                      <div className={`flex items-center gap-1 text-xs truncate max-w-full overflow-hidden ${isOverdue ? 'text-[var(--danger-color)] font-bold' : 'text-[var(--text-secondary)]'}`}>
+                        {isOverdue && <Clock className="w-3 h-3 shrink-0" />}
+                        <span className="truncate">{new Date(task.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })}</span>
                       </div>
                     ) : (
                       <span className="text-xs text-[var(--text-muted)]">-</span>
@@ -754,11 +836,12 @@ function TaskListView({
               <ChevronLeft className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              {getPageNumbers(currentPage, totalPages).map((page, index) => (
                 <button
-                  key={page}
-                  onClick={() => onPageChange(page)}
-                  className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${currentPage === page ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)]'}`}
+                  key={`${page}-${index}`}
+                  disabled={page === '...'}
+                  onClick={() => page !== '...' && onPageChange(Number(page))}
+                  className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${currentPage === page ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]' : page === '...' ? 'text-[var(--text-muted)] cursor-default' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)] cursor-pointer'}`}
                 >
                   {page}
                 </button>
@@ -915,7 +998,7 @@ export default function App() {
 
   // Pagination, Sort, Filter states
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
   const [selectedStatuses, setSelectedStatuses] = useState<TaskStatus[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<TaskPriority[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -938,7 +1021,9 @@ export default function App() {
   const uniqueDivisions = metadataOptions.divisions;
 
   const filteredTasks = tasks.filter(t => {
-    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const taskKey = t.display_id || `IC-${t.id}`;
+    const matchesSearch = taskKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.assignee?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.brand?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1540,16 +1625,19 @@ export default function App() {
               body: uploadData
             });
           }
-          setTasks(prev => [newTask, ...prev]);
+          setTasks(prev => {
+            if (prev.some(t => t.id === newTask.id)) return prev.map(t => t.id === newTask.id ? newTask : t);
+            return [newTask, ...prev];
+          });
         } else {
           const resultTask = await res.json();
           if (editingTask) {
              setTasks(prev => prev.map(t => t.id === resultTask.id ? resultTask : t));
-             if (formData.status === 'DONE' || formData.status === 'CLOSED') {
-                setTimeout(() => fetchTasks(), 1000);
-             }
           } else {
-             setTasks(prev => [resultTask, ...prev]);
+             setTasks(prev => {
+               if (prev.some(t => t.id === resultTask.id)) return prev.map(t => t.id === resultTask.id ? resultTask : t);
+               return [resultTask, ...prev];
+             });
           }
         }
         
@@ -1646,26 +1734,62 @@ export default function App() {
     
     // Subscribe to comments
     const unsubscribeComments = onSnapshot(
-      query(collection(db, 'comments'), where('task_id', '==', editingTask.id), orderBy('created_at', 'desc')), 
-      (snapshot) => { setComments(snapshot.docs.map(formatDoc)); }
+      query(collection(db, 'comments'), where('task_id', '==', editingTask.id)), 
+      (snapshot) => { 
+        const items = snapshot.docs.map(formatDoc);
+        items.sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tB - tA; // desc
+        });
+        setComments(items); 
+      },
+      (error) => console.error("Comment listener error:", error)
     );
     
     // Subscribe to attachments
     const unsubscribeAttachments = onSnapshot(
-      query(collection(db, 'attachments'), where('task_id', '==', editingTask.id), orderBy('uploaded_at', 'desc')), 
-      (snapshot) => { setAttachments(snapshot.docs.map(formatDoc)); }
+      query(collection(db, 'attachments'), where('task_id', '==', editingTask.id)), 
+      (snapshot) => { 
+        const items = snapshot.docs.map(formatDoc);
+        items.sort((a, b) => {
+          const tA = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
+          const tB = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
+          return tB - tA;
+        });
+        setAttachments(items); 
+      },
+      (error) => console.error("Attachment listener error:", error)
     );
     
     // Subscribe to task links
     const unsubscribeLinks = onSnapshot(
       query(collection(db, 'task_links'), where('source_task_id', '==', editingTask.id)), 
-      (snapshot) => { setTaskLinks(snapshot.docs.map(formatDoc)); }
+      (snapshot) => { 
+        const items = snapshot.docs.map(formatDoc);
+        items.sort((a, b) => {
+           const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+           const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+           return tB - tA;
+        });
+        setTaskLinks(items); 
+      },
+      (error) => console.error("Link listener error:", error)
     );
     
     // Subscribe to activities
     const unsubscribeActivities = onSnapshot(
-      query(collection(db, 'activity_log'), where('task_id', '==', editingTask.id), orderBy('created_at', 'desc')), 
-      (snapshot) => { setActivities(snapshot.docs.map(formatDoc)); }
+      query(collection(db, 'activity_log'), where('task_id', '==', editingTask.id)), 
+      (snapshot) => { 
+        const items = snapshot.docs.map(formatDoc);
+        items.sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tB - tA;
+        });
+        setActivities(items); 
+      },
+      (error) => console.error("Activity listener error:", error)
     );
 
     return () => {
@@ -2572,12 +2696,15 @@ export default function App() {
                   />
                 </div>
 
-                {(selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedPriorities.length > 0) && (
+                {(searchQuery.length > 0 || selectedAssignees.length > 0 || selectedStatuses.length > 0 || selectedPriorities.length > 0 || selectedCategories.length > 0 || selectedBrands.length > 0) && (
                   <button 
                     onClick={() => {
+                      setSearchQuery('');
                       setSelectedAssignees([]);
                       setSelectedStatuses([]);
                       setSelectedPriorities([]);
+                      setSelectedCategories([]);
+                      setSelectedBrands([]);
                       setCurrentPage(1);
                     }}
                     className="text-xs text-[var(--accent-color)] hover:underline font-medium whitespace-nowrap"

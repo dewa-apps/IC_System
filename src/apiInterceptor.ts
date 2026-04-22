@@ -254,6 +254,69 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     }
   };
 
+  const triggerMentionNotification = async (
+    text: string,
+    actionBy: string,
+    taskTitle: string,
+    displayId: string,
+    sourceType: 'task' | 'comment'
+  ) => {
+    if (!text) return;
+    
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      if (usersSnapshot.empty) return;
+      
+      const allUsers = usersSnapshot.docs.map(doc => doc.data());
+      
+      const mentionedUsers = allUsers.filter(u => u.name && text.includes(`@${u.name}`) && u.name !== actionBy);
+      
+      for (const user of mentionedUsers) {
+        const notificationPayload = {
+          type: 'MENTION',
+          recipient: user.name,
+          title: `You were mentioned in a ${sourceType === 'task' ? 'task' : 'comment'}`,
+          message: `${actionBy} mentioned you in ${displayId} ("${taskTitle}")`,
+          task_display_id: displayId,
+          read: false,
+          created_at: serverTimestamp()
+        };
+        
+        if (localStorage.getItem('notify_in_app') !== 'false') {
+          try {
+            await addDoc(collection(db, 'notifications'), notificationPayload);
+          } catch (e) {
+            console.error("Failed to save mention notification to Firestore", e);
+          }
+        }
+
+        if (localStorage.getItem('notify_email') !== 'false') {
+          try {
+            const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+            
+            const response = await originalFetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'sendEmail',
+                to: user.email,
+                subject: `[IC Task Manager] You were mentioned in Task ${displayId}`,
+                body: `Hello ${user.name},\n\n${actionBy} mentioned you in a ${sourceType === 'task' ? 'task description' : 'comment'} for Task ${displayId} ("${taskTitle}").\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+              })
+            });
+            
+            const resultText = await response.text();
+            console.log(`Mention email notification sent to ${user.email}. GAS Response:`, resultText);
+          } catch (e) {
+            console.error("Failed to send mention email notification", e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to process mention notifications", e);
+    }
+  };
+
   try {
     // --- METADATA ---
     if (path === 'metadata/dropdowns' && method === 'GET') {
@@ -486,7 +549,8 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       Promise.all([
         logActivity(newDocId, "Created task", `Title: ${body.title}`),
         updateDropdownMetadata(body),
-        body.assignee ? triggerAssignmentNotification(body.assignee, body.title, body.display_id || generatedDisplayId, userName) : Promise.resolve()
+        body.assignee ? triggerAssignmentNotification(body.assignee, body.title, body.display_id || generatedDisplayId, userName) : Promise.resolve(),
+        body.description ? triggerMentionNotification(body.description, userName, body.title, body.display_id || generatedDisplayId, 'task') : Promise.resolve()
       ]).catch(err => console.error("Error in task creation side-effects:", err));
       
       const newDoc = await getDoc(taskRef);
@@ -535,6 +599,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           // Trigger modification notification to the author
           if (oldData.authorName && oldData.authorName !== userName) {
             bgTasks.push(triggerTaskModificationNotification(oldData.authorName, taskTitle, displayId, 'edited', userName));
+          }
+
+          // Trigger mention notification if description was changed
+          if (body.description && body.description !== oldData.description) {
+            bgTasks.push(triggerMentionNotification(body.description, userName, taskTitle, displayId, 'task'));
           }
           
           // RECURRING TASKS LOGIC
@@ -639,12 +708,20 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         created_at: serverTimestamp()
       });
       
-      // Run side-effects in background
-      Promise.all([
-        logActivity(taskId, "Added comment", body.content.substring(0, 50)),
-        triggerCommentNotification(taskId, body.content, userName),
-        updateDoc(doc(db, 'tasks', taskId), { comment_count: increment(1) })
-      ]).catch(err => console.error("Error in comment side effects", err));
+      // Fetch task directly since we need title and ID for mention notification
+      getDoc(doc(db, 'tasks', taskId)).then((taskDoc) => {
+        const taskData = taskDoc.exists() ? taskDoc.data() : null;
+        const taskTitle = taskData?.title || 'Unknown Task';
+        const displayId = taskData?.display_id || `IC-${taskId}`;
+        
+        // Run side-effects
+        Promise.all([
+          logActivity(taskId, "Added comment", body.content.substring(0, 50)),
+          triggerCommentNotification(taskId, body.content, userName),
+          triggerMentionNotification(body.content, userName, taskTitle, displayId, 'comment'),
+          updateDoc(doc(db, 'tasks', taskId), { comment_count: increment(1) })
+        ]).catch(err => console.error("Error in comment side effects", err));
+      });
       
       const newDoc = await getDoc(docRef);
       return new Response(JSON.stringify(formatDoc(newDoc)), { status: 201 });

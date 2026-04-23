@@ -203,17 +203,19 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
     taskTitle: string, 
     displayId: string, 
     actionTaken: 'edited' | 'deleted', 
-    actionBy: string
+    actionBy: string,
+    detailedChanges?: string
   ) => {
     if (!authorName || authorName === actionBy) return;
     
     const actionText = actionTaken === 'deleted' ? 'deleted' : 'updated';
+    const messageSuffix = detailedChanges ? `\n\nChanges:\n${detailedChanges}` : '';
     
     const notificationPayload = {
       type: 'TASK_MODIFICATION',
       recipient: authorName,
       title: `Task ${displayId} was ${actionText}`,
-      message: `${actionBy} has ${actionText} your task: "${taskTitle}"`,
+      message: `${actionBy} has ${actionText} your task: "${taskTitle}"${detailedChanges ? `\nDetails: ${detailedChanges.replace(/\n/g, ', ')}` : ''}`,
       task_display_id: displayId,
       read: false,
       created_at: serverTimestamp()
@@ -241,7 +243,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
               action: 'sendEmail',
               to: authorEmail,
               subject: `[IC Task Manager] Task ${displayId} ${actionText}`,
-              body: `Hello ${authorName},\n\n${actionBy} has ${actionText} the task you created.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}\n\nPlease check the IC Task Manager for more details (if applicable).\n\nBest regards,\nIC System`
+              body: `Hello ${authorName},\n\n${actionBy} has ${actionText} the task you created.\n\nTask ID: ${displayId}\nTitle: ${taskTitle}${messageSuffix}\n\nPlease check the IC Task Manager for more details (if applicable).\n\nBest regards,\nIC System`
             })
           });
           
@@ -582,9 +584,41 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
         await updateDoc(taskRef, updatePayload);
         
+        let detailedMessage = "Task details updated";
+        let detailedChangesForNotification = "";
+        if (oldData) {
+          const changes: string[] = [];
+          const fieldsToTrack = [
+            { key: 'status', label: 'Status' },
+            { key: 'assignee', label: 'Assignee' },
+            { key: 'priority', label: 'Priority' },
+            { key: 'category', label: 'Category' },
+            { key: 'brand', label: 'Brand' },
+            { key: 'division', label: 'Division' },
+            { key: 'title', label: 'Title' },
+            { key: 'requestor', label: 'Requestor' },
+            { key: 'due_date', label: 'Due Date' }
+          ];
+
+          fieldsToTrack.forEach(({key, label}) => {
+            if (body[key] !== undefined && oldData[key] !== body[key]) {
+               changes.push(`${label} changed from '${oldData[key] || 'None'}' to '${body[key] || 'None'}'`);
+            }
+          });
+
+          if (body.description !== undefined && oldData.description !== body.description) {
+               changes.push(`Description was updated`);
+          }
+
+          if (changes.length > 0) {
+             detailedMessage = changes.join('\n');
+             detailedChangesForNotification = changes.join('\n');
+          }
+        }
+
         // Background tasks
         const bgTasks: Promise<any>[] = [
-          logActivity(taskId, "Updated task", "Task details updated"),
+          logActivity(taskId, "Updated task", detailedMessage),
           updateDropdownMetadata(body)
         ];
         
@@ -598,7 +632,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
           // Trigger modification notification to the author
           if (oldData.authorName && oldData.authorName !== userName) {
-            bgTasks.push(triggerTaskModificationNotification(oldData.authorName, taskTitle, displayId, 'edited', userName));
+            bgTasks.push(triggerTaskModificationNotification(oldData.authorName, taskTitle, displayId, 'edited', userName, detailedChangesForNotification));
           }
 
           // Trigger mention notification if description was changed

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch, formatDoc } from './apiInterceptor';
 import { auth, db } from './firebase';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, setDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { 
   Layout, 
@@ -70,6 +70,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser } from './types';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
+import AuditLogView from './components/AuditLogView';
 import RichTextEditor from './components/RichTextEditor';
 import GanttView from './components/GanttView';
 import Papa from 'papaparse';
@@ -952,7 +953,7 @@ export default function App() {
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [selectedLinkType, setSelectedLinkType] = useState<LinkType>('relates_to');
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [currentView, setCurrentView] = useState<'tasks' | 'reports' | 'settings'>('tasks');
+  const [currentView, setCurrentView] = useState<'tasks' | 'reports' | 'settings' | 'audit'>('tasks');
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -971,6 +972,11 @@ export default function App() {
   const [notificationConfig, setNotificationConfig] = useState({
     email: localStorage.getItem('notify_email') !== 'false', // default true
     inApp: localStorage.getItem('notify_in_app') !== 'false' // default true
+  });
+
+  const [backupConfig, setBackupConfig] = useState<{enabled: boolean, intervalMinutes: number}>({ 
+    enabled: false, 
+    intervalMinutes: 15 
   });
 
   useEffect(() => {
@@ -1327,6 +1333,60 @@ export default function App() {
   }, [currentUser]);
 
   const myNameInDb = users.find(u => u.email === currentUser?.email)?.name || currentUserName;
+
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const unsubscribeMeta = onSnapshot(doc(db, 'metadata', 'settings'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.backup) {
+          setBackupConfig(data.backup);
+        }
+      }
+    });
+
+    return () => unsubscribeMeta();
+  }, [currentUser]);
+
+  const updateBackupConfig = async (config: { enabled: boolean; intervalMinutes: number }) => {
+    try {
+      await setDoc(doc(db, 'metadata', 'settings'), { backup: config }, { merge: true });
+      setBackupConfig(config);
+      toast.success('Backup settings updated');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update backup settings');
+    }
+  };
+
+  const tasksRef = useRef(tasks);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!backupConfig.enabled || currentUserRole !== 'admin') return;
+
+    const intervalMs = backupConfig.intervalMinutes * 60 * 1000;
+    const intervalId = setInterval(async () => {
+       try {
+         console.log('Running automatic backup...');
+         await apiFetch('/api/backup-to-sheets', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ 
+             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+             tasks: tasksRef.current
+           })
+         });
+       } catch (err) {
+         console.error('Auto backup failed', err);
+       }
+    }, intervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [backupConfig.enabled, backupConfig.intervalMinutes, currentUserRole]);
 
   useEffect(() => {
     // Subscribe to notifications
@@ -2273,6 +2333,14 @@ export default function App() {
               visible={isSidebarVisible}
               onClick={() => setCurrentView('reports')}
             />
+            <SidebarItem 
+              icon={<History className="w-5 h-5" />} 
+              label="Audit Log" 
+              active={currentView === 'audit'}
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+              onClick={() => setCurrentView('audit')}
+            />
             <div className="pt-4 mt-4 border-t border-[var(--border-color)]">
               <SidebarItem 
                 icon={<Settings className="w-5 h-5" />} 
@@ -2326,7 +2394,7 @@ export default function App() {
                 <Menu className="w-5 h-5" />
               </button>
               <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : 'Tasks'}
+                {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : currentView === 'audit' ? 'Audit Log' : 'Tasks'}
               </h2>
             </div>
             
@@ -2677,6 +2745,31 @@ export default function App() {
                           <Download className="w-3.5 h-3.5" />
                           Export Tasks (CSV)
                         </button>
+                        <button 
+                          onClick={async () => {
+                            setIsToolsMenuOpen(false);
+                            const toastId = toast.loading('Backing up tasks to Google Sheets...');
+                            try {
+                              const res = await apiFetch('/api/backup-to-sheets', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                  sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+                                  tasks: tasks // directly passing front-end state 
+                                })
+                              });
+                              if (!res.ok) throw new Error('Backup failed');
+                              toast.success('Backup to Google Sheets completed successfully!', { id: toastId });
+                            } catch (error) {
+                              console.error(error);
+                              toast.error('Failed to backup to Google Sheets. Check configuration.', { id: toastId, duration: 8000 });
+                            }
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-all"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          Backup to Sheets
+                        </button>
                       </div>
                     </>
                   )}
@@ -2765,9 +2858,13 @@ export default function App() {
             setTheme={setTheme}
             notificationConfig={notificationConfig}
             updateNotificationConfig={updateNotificationConfig}
+            backupConfig={backupConfig}
+            updateBackupConfig={updateBackupConfig}
           />
         ) : currentView === 'reports' ? (
           <ReportsView tasks={tasks} />
+        ) : currentView === 'audit' ? (
+          <AuditLogView />
         ) : (
           <>
             {/* Main Content */}

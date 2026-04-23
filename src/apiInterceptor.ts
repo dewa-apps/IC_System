@@ -715,6 +715,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         if (taskDoc.exists()) {
           const taskData = taskDoc.data();
           const displayId = taskData.display_id || `IC-${taskId}`;
+          
+          // Log deletion in activity log so an audit trail is preserved globally
+          logActivity(taskId, "Deleted task", `Task ${displayId} ("${taskData.title}") was deleted`);
+          
           if (taskData.authorName && taskData.authorName !== userName) {
             triggerTaskModificationNotification(taskData.authorName, taskData.title, displayId, 'deleted', userName).catch(err => console.error(err));
           }
@@ -724,7 +728,13 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       }
     }
 
-    // --- COMMENTS ---
+    // --- ACTIVITIES ---
+    if (segments[0] === 'activities' && segments.length === 1 && method === 'GET') {
+      const q = query(collection(db, 'activity_log'), orderBy('created_at', 'desc'), limit(100));
+      const snapshot = await getDocs(q);
+      return new Response(JSON.stringify(snapshot.docs.map(formatDoc)), { status: 200 });
+    }
+
     if (segments[0] === 'tasks' && segments[2] === 'comments' && method === 'GET') {
       const taskId = segments[1];
       const q = query(collection(db, 'comments'), where('task_id', '==', taskId), orderBy('created_at', 'asc'));
@@ -827,6 +837,36 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const q = query(collection(db, 'activity_log'), where('task_id', '==', taskId), orderBy('created_at', 'desc'));
       const snapshot = await getDocs(q);
       return new Response(JSON.stringify(snapshot.docs.map(formatDoc)), { status: 200 });
+    }
+
+    // --- BACKUP ---
+    if (segments[0] === 'backup-to-sheets' && method === 'POST') {
+      try {
+        const body = JSON.parse(init?.body as string);
+        const { sheetId, tasks } = body;
+        
+        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+        
+        const response = await originalFetch(gasUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify({
+            action: 'backupToSheets',
+            sheetId: sheetId,
+            tasks: tasks || [] // use tasks from the body directly to save Firestore read quota
+          })
+        });
+        
+        const resultText = await response.text();
+        console.log(`Backup GAS Response:`, resultText);
+        
+        return new Response(JSON.stringify({ success: true, message: 'Backup sent to Google Sheets' }), { status: 200 });
+      } catch (e: any) {
+        console.error("Backup failed", e);
+        return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+      }
     }
 
     // --- TASK LINKS ---

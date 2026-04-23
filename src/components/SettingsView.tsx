@@ -14,6 +14,8 @@ interface SettingsViewProps {
   setTheme?: (theme: 'light' | 'dark' | 'system') => void;
   notificationConfig?: { email: boolean; inApp: boolean };
   updateNotificationConfig?: (key: 'email' | 'inApp', value: boolean) => void;
+  backupConfig: { enabled: boolean; intervalMinutes: number };
+  updateBackupConfig: (config: { enabled: boolean; intervalMinutes: number }) => void;
 }
 
 export default function SettingsView({ 
@@ -23,7 +25,9 @@ export default function SettingsView({
   theme = 'system',
   setTheme,
   notificationConfig = { email: true, inApp: true },
-  updateNotificationConfig
+  updateNotificationConfig,
+  backupConfig,
+  updateBackupConfig
 }: SettingsViewProps) {
   const currentUser = auth.currentUser;
   const [activeTab, setActiveTab] = useState('profile');
@@ -584,6 +588,51 @@ export default function SettingsView({
                   <p className="text-sm text-[var(--text-muted)]">Manage your workspace data and run advanced clean up tasks.</p>
                 </div>
                 
+                <div className="p-5 border border-[var(--border-color)] bg-[var(--bg-secondary)] rounded-lg">
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0 mt-1 text-[var(--text-secondary)]">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-[var(--text-primary)]">Automated Backup to Google Sheets</h3>
+                      <p className="text-sm text-[var(--text-secondary)] mt-1 mb-4">
+                        Automatically export your entire task database to Google Sheets periodically. You must keep the application open in your browser to process these backups.
+                      </p>
+                      
+                      <div className="flex items-center gap-4 mb-4">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={backupConfig.enabled}
+                            onChange={(e) => updateBackupConfig({ ...backupConfig, enabled: e.target.checked })}
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <span className="text-sm font-medium text-[var(--text-primary)]">
+                          {backupConfig.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+
+                      {backupConfig.enabled && (
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm text-[var(--text-primary)] font-medium">Backup Interval:</label>
+                          <select 
+                            value={backupConfig.intervalMinutes}
+                            onChange={(e) => updateBackupConfig({ ...backupConfig, intervalMinutes: parseInt(e.target.value) })}
+                            className="bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5"
+                          >
+                            <option value={5}>Every 5 minutes</option>
+                            <option value={15}>Every 15 minutes</option>
+                            <option value={30}>Every 30 minutes</option>
+                            <option value={60}>Every 1 hour</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-5 border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 rounded-lg">
                   <div className="flex gap-4">
                     <div className="flex-shrink-0 mt-1 text-red-600 dark:text-red-400">

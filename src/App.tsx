@@ -928,10 +928,10 @@ export default function App() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState('');
   const [isUpdatingComment, setIsUpdatingComment] = useState(false);
-  const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [commentToDelete, setCommentToDelete] = useState<number | string | null>(null);
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | number | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
@@ -3602,7 +3602,7 @@ export default function App() {
                                               onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                setEditingCommentId(Number(comment.id));
+                                                setEditingCommentId(comment.id);
                                                 setEditingCommentContent(comment.content);
                                               }}
                                               className="p-1 text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] rounded transition-all"
@@ -3615,7 +3615,7 @@ export default function App() {
                                               onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                setCommentToDelete(Number(comment.id));
+                                                setCommentToDelete(comment.id);
                                               }}
                                               className="p-1 text-[var(--danger-color)] hover:bg-[var(--badge-danger-bg)] rounded transition-all"
                                               title="Delete"

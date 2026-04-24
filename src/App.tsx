@@ -903,6 +903,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [systemLogs, setSystemLogs] = useState<ActivityLog[]>([]);
   const [taskLimit, setTaskLimit] = useState(50);
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
   const [columns, setColumns] = useState<{ id: TaskStatus; label: string }[]>([
@@ -1337,6 +1338,14 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     
+    // Subscribe to system activity logs (limit to 100 for global audit)
+    const q = query(collection(db, 'activity_log'), orderBy('created_at', 'desc'), limit(100));
+    const unsubscribeLogs = onSnapshot(q, (snapshot) => {
+      const logs = snapshot.docs.map(formatDoc) as ActivityLog[];
+      setSystemLogs(logs);
+    }, (err) => console.error("Global activity log listener error:", err));
+    
+    // Subscribe to metadata settings
     const unsubscribeMeta = onSnapshot(doc(db, 'metadata', 'settings'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -1346,7 +1355,10 @@ export default function App() {
       }
     });
 
-    return () => unsubscribeMeta();
+    return () => {
+      unsubscribeLogs();
+      unsubscribeMeta();
+    };
   }, [currentUser]);
 
   const updateBackupConfig = async (config: { enabled: boolean; intervalMinutes: number }) => {
@@ -2864,7 +2876,7 @@ export default function App() {
         ) : currentView === 'reports' ? (
           <ReportsView tasks={tasks} />
         ) : currentView === 'audit' ? (
-          <AuditLogView />
+          <AuditLogView logs={systemLogs} tasks={tasks} />
         ) : (
           <>
             {/* Main Content */}
@@ -3863,7 +3875,7 @@ export default function App() {
                                   <div className="text-xs text-[var(--text-secondary)] mb-1">
                                     {activity.details.includes('<') && activity.details.includes('>') ? (
                                       <div 
-                                        className="prose prose-xs dark:prose-invert max-w-none prose-p:my-0 prose-p:leading-tight prose-ul:my-0 prose-ol:my-0"
+                                        className="[&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_*]:text-inherit [&_*]:text-[12px] w-full"
                                         dangerouslySetInnerHTML={{ __html: activity.details }}
                                       />
                                     ) : (

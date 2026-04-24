@@ -1,31 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { History, RefreshCcw, User, PlusCircle, Pencil, Trash2, Info } from 'lucide-react';
-import { ActivityLog } from '../types';
-import { apiFetch } from '../apiInterceptor';
+import React from 'react';
+import { RefreshCcw, User, PlusCircle, Pencil, Trash2, Info, Hash } from 'lucide-react';
+import { ActivityLog, Task } from '../types';
 
-export default function AuditLogView() {
-  const [logs, setLogs] = useState<ActivityLog[]>([]);
-  const [loading, setLoading] = useState(true);
+interface AuditLogViewProps {
+  logs: ActivityLog[];
+  tasks: Task[];
+  loading?: boolean;
+}
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      const res = await apiFetch('/api/activities');
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data);
-      }
-    } catch (e) {
-      console.error("Failed to fetch global activity logs", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
+export default function AuditLogView({ logs, tasks, loading = false }: AuditLogViewProps) {
   const getLogStyle = (action: string) => {
     const normalized = action.toLowerCase();
     if (normalized.includes('create') || normalized.includes('add') || normalized.includes('upload') || normalized.includes('import')) {
@@ -56,6 +39,12 @@ export default function AuditLogView() {
     };
   };
 
+  const getTaskDisplayId = (taskId: string | number) => {
+    if (!taskId) return null;
+    const task = tasks.find(t => t.id.toString() === taskId.toString());
+    return task?.display_id || `IC-${taskId}`;
+  };
+
   return (
     <main className="flex-1 p-6 overflow-auto bg-[var(--bg-body)]">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -64,13 +53,12 @@ export default function AuditLogView() {
             <h2 className="text-2xl font-bold text-[var(--text-primary)]">System Audit Log</h2>
           </div>
           <button 
-            onClick={fetchLogs}
-            disabled={loading}
+            disabled={true}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors disabled:opacity-50"
-            title="Refresh Logs"
+            title="Auto-refreshing via real-time subscription"
           >
             <RefreshCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            Live
           </button>
         </div>
 
@@ -83,6 +71,7 @@ export default function AuditLogView() {
             <div className="divide-y divide-[var(--border-color)]">
               {logs.map((log) => {
                 const style = getLogStyle(log.action);
+                const displayId = getTaskDisplayId(log.task_id);
                 return (
                   <div key={log.id} className={`p-4 transition-colors ${style.bg} hover:brightness-95 dark:hover:brightness-110`}>
                     <div className="flex flex-col gap-2">
@@ -95,9 +84,17 @@ export default function AuditLogView() {
                             <span className={`font-semibold text-xs px-2 py-0.5 rounded border inline-block w-fit mb-1 ${style.badge}`}>
                               {log.action}
                             </span>
-                            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-medium">
-                              <User className="w-3.5 h-3.5" />
-                              <span>{log.user || 'Unknown User'}</span>
+                            <div className="flex items-center gap-3 text-xs text-[var(--text-muted)] font-medium">
+                              <span className="flex items-center gap-1">
+                                <User className="w-3.5 h-3.5" />
+                                {log.user || 'Unknown User'}
+                              </span>
+                              {displayId && (
+                                <span className="flex items-center gap-1 text-[var(--text-secondary)] font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] px-1.5 py-0.5 rounded">
+                                  <Hash className="w-3 h-3 text-[var(--accent-color)]" />
+                                  {displayId}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -109,7 +106,7 @@ export default function AuditLogView() {
                         <div className="ml-10">
                           {log.details.includes('<') && log.details.includes('>') ? (
                              <div 
-                               className="text-sm text-[var(--text-primary)] whitespace-pre-wrap ml-1 border-l-2 border-[var(--border-focus)] pl-3 py-0.5 opacity-90 prose prose-sm dark:prose-invert max-w-none prose-p:my-0 prose-p:leading-tight prose-ul:my-0 prose-ol:my-0"
+                               className="text-sm text-[var(--text-primary)] whitespace-pre-wrap ml-1 border-l-2 border-[var(--border-focus)] pl-3 py-0.5 opacity-90 transition-opacity [&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_*]:text-inherit [&_*]:text-[14px]"
                                dangerouslySetInnerHTML={{ __html: log.details }}
                              />
                           ) : (

@@ -2345,14 +2345,16 @@ export default function App() {
               visible={isSidebarVisible}
               onClick={() => setCurrentView('reports')}
             />
-            <SidebarItem 
-              icon={<History className="w-5 h-5" />} 
-              label="Audit Log" 
-              active={currentView === 'audit'}
-              collapsed={isSidebarCollapsed} 
-              visible={isSidebarVisible}
-              onClick={() => setCurrentView('audit')}
-            />
+            {currentUserRole === 'admin' && (
+              <SidebarItem 
+                icon={<History className="w-5 h-5" />} 
+                label="Audit Log" 
+                active={currentView === 'audit'}
+                collapsed={isSidebarCollapsed} 
+                visible={isSidebarVisible}
+                onClick={() => setCurrentView('audit')}
+              />
+            )}
             <div className="pt-4 mt-4 border-t border-[var(--border-color)]">
               <SidebarItem 
                 icon={<Settings className="w-5 h-5" />} 
@@ -2498,7 +2500,7 @@ export default function App() {
                                     {notif.title}
                                   </p>
                                   <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
-                                    {notif.message}
+                                    {notif.message ? notif.message.replace(/<[^>]*>?/gm, '') : ''}
                                   </p>
                                   <p className="text-[10px] text-[var(--text-muted)] mt-2">
                                     {formatDateTime(notif.created_at?.toDate ? notif.created_at.toDate().toISOString() : notif.created_at)}
@@ -2876,7 +2878,17 @@ export default function App() {
         ) : currentView === 'reports' ? (
           <ReportsView tasks={tasks} />
         ) : currentView === 'audit' ? (
-          <AuditLogView logs={systemLogs} tasks={tasks} />
+          currentUserRole === 'admin' ? (
+            <AuditLogView logs={systemLogs} tasks={tasks} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-[var(--bg-body)]">
+              <div className="text-center">
+                <History className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Denied</h2>
+                <p className="text-[var(--text-secondary)] mt-2">Only administrators can view the audit log.</p>
+              </div>
+            </div>
+          )
         ) : (
           <>
             {/* Main Content */}

@@ -3860,7 +3860,16 @@ export default function App() {
                                   <span className="text-xs text-[var(--text-muted)]">{activity.action}</span>
                                 </div>
                                 {activity.details && (
-                                  <p className="text-xs text-[var(--text-secondary)] mb-1">{activity.details}</p>
+                                  <div className="text-xs text-[var(--text-secondary)] mb-1">
+                                    {activity.details.includes('<') && activity.details.includes('>') ? (
+                                      <div 
+                                        className="prose prose-xs dark:prose-invert max-w-none prose-p:my-0 prose-p:leading-tight prose-ul:my-0 prose-ol:my-0"
+                                        dangerouslySetInnerHTML={{ __html: activity.details }}
+                                      />
+                                    ) : (
+                                      activity.details
+                                    )}
+                                  </div>
                                 )}
                                 <span className="text-[10px] text-[var(--text-muted)]">
                                   {formatDateTime(activity.created_at)}

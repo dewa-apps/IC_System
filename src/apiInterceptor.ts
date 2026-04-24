@@ -9,6 +9,14 @@ const storage = getStorage();
 
 const originalFetch = window.fetch;
 
+// Helper to strip HTML
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  const tmp = document.createElement('DIV');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+};
+
 // Helper to format Firestore document
 export const formatDoc = (docSnapshot: any) => {
   const data = docSnapshot.data();
@@ -145,11 +153,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
       // 4. Send notifications to each user
       for (const user of usersToNotify) {
+        const plainComment = stripHtml(commentContent);
         const notificationPayload = {
           type: 'NEW_COMMENT',
           recipient: user,
           title: `New Comment on Task: ${displayId}`,
-          message: `${commentedBy} commented: "${commentContent.substring(0, 50)}${commentContent.length > 50 ? '...' : ''}"`,
+          message: `${commentedBy} commented: "${plainComment.substring(0, 50)}${plainComment.length > 50 ? '...' : ''}"`,
           task_display_id: displayId,
           read: false,
           created_at: serverTimestamp()
@@ -181,7 +190,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
                   action: 'sendEmail',
                   to: userEmail,
                   subject: `[IC Task Manager] New Comment on Task: ${displayId}`,
-                  body: `Hello ${user},\n\n${commentedBy} added a new comment to task "${taskTitle}" (ID: ${displayId}).\n\nComment:\n"${commentContent}"\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
+                  body: `Hello ${user},\n\n${commentedBy} added a new comment to task "${taskTitle}" (ID: ${displayId}).\n\nComment:\n"${plainComment}"\n\nPlease check the IC Task Manager for more details.\n\nBest regards,\nIC System`
                 })
               });
               
@@ -1024,7 +1033,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       const gasResult = await gasResponse.json();
 
       if (gasResult.status !== 'success') {
-        throw new Error(gasResult.message || "Failed to upload to Google Drive");
+        const errorMsg = gasResult.message || "Failed to upload to Google Drive";
+        if (errorMsg.includes('getFolderById')) {
+          throw new Error("Google Drive Folder ID belum dikonfigurasi. Silakan buka File > Google Apps Script > code.gs lalu ganti teks 'PASTE_ID_FOLDER_DI_SINI' dengan ID folder Shared Drive Anda, kemudian Deploy ulang script tersebut.");
+        }
+        throw new Error(errorMsg);
       }
 
       const downloadURL = gasResult.fileUrl;

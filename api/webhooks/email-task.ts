@@ -41,11 +41,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "No taskData provided" });
     }
 
-    let db = admin.firestore();
+    let db: admin.firestore.Firestore;
     const dbId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID;
     if (dbId && dbId !== '(default)') {
       const { getFirestore } = require('firebase-admin/firestore');
       db = getFirestore(undefined, dbId);
+    } else {
+      db = admin.firestore();
     }
     
     // Duplicate check based on email thread id

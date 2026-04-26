@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "prebuild": "node -e \"const fs = require('fs'); if (!fs.existsSync('firebase-applet-config.json')) fs.writeFileSync('firebase-applet-config.json', '{}');\"",
     "build": "vite build",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit"

@@ -31,13 +31,21 @@ function getDb() {
       const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
       const config = JSON.parse(configStr);
       dbInstance = admin.firestore();
-      if (config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)') {
+      
+      const dbId = process.env.FIREBASE_DATABASE_ID || config.firestoreDatabaseId;
+      if (dbId && dbId !== '(default)') {
         const { getFirestore } = require('firebase-admin/firestore');
-        dbInstance = getFirestore(undefined, config.firestoreDatabaseId);
+        dbInstance = getFirestore(undefined, dbId);
       }
     } catch (e) {
       console.warn("Failed to load custom database ID from config, falling back to default.", e);
-      dbInstance = admin.firestore();
+      const dbId = process.env.FIREBASE_DATABASE_ID;
+      if (dbId && dbId !== '(default)') {
+        const { getFirestore } = require('firebase-admin/firestore');
+        dbInstance = getFirestore(undefined, dbId);
+      } else {
+        dbInstance = admin.firestore();
+      }
     }
   }
   return dbInstance;

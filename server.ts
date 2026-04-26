@@ -2,13 +2,114 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as admin from 'firebase-admin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+try {
+  admin.initializeApp();
+  console.log("Firebase Admin Initialized successfully.");
+} catch (e) {
+  console.log("Failed to initialize Firebase Admin:", e);
+}
+
+import fs from 'fs';
+
+// Helper to get db instance with correct ID
+let dbInstance: admin.firestore.Firestore | null = null;
+function getDb() {
+  if (!dbInstance) {
+    try {
+      const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configStr);
+      dbInstance = admin.firestore();
+      if (config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)') {
+        const { getFirestore } = require('firebase-admin/firestore');
+        dbInstance = getFirestore(undefined, config.firestoreDatabaseId);
+      }
+    } catch (e) {
+      console.warn("Failed to load custom database ID from config, falling back to default.", e);
+      dbInstance = admin.firestore();
+    }
+  }
+  return dbInstance;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  
+  app.use(express.json());
+
+  // Webhook endpoint to receive emails from Google Apps Script
+  app.post("/api/webhooks/email-task", async (req, res) => {
+    try {
+      const { secret, taskData } = req.body;
+      
+      // Simple secret check (in a real app, use environment variables)
+      if (secret !== "SIRCLO_INVENTORY_SECRET_TASK") {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      if (!taskData) {
+        return res.status(400).json({ error: "No taskData provided" });
+      }
+
+      const db = getDb();
+      
+      // Duplicate check based on email thread id or message id
+      if (taskData.email_thread_id) {
+        const existingInfo = await db.collection("tasks")
+          .where("email_thread_id", "==", taskData.email_thread_id)
+          .limit(1)
+          .get();
+        if (!existingInfo.empty) {
+          return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
+        }
+      }
+
+      // Generate sequence display_id
+      const metadataRef = db.collection('metadata').doc('taskSequence');
+      const newDisplayId = await db.runTransaction(async (transaction) => {
+        const metadataDoc = await transaction.get(metadataRef);
+        let currentMax = 0;
+        if (metadataDoc.exists && metadataDoc.data()?.lastNumber) {
+          currentMax = metadataDoc.data()?.lastNumber;
+        }
+        const nextNum = currentMax + 1;
+        transaction.set(metadataRef, { lastNumber: nextNum }, { merge: true });
+        return `IC-${String(nextNum).padStart(5, '0')}`;
+      });
+
+      // Find division based on requestor
+      let division = "";
+      if (taskData.requestor) {
+        const pastTasks = await db.collection("tasks")
+          .where("requestor", "==", taskData.requestor)
+          .where("division", "!=", "")
+          .limit(1)
+          .get();
+        if (!pastTasks.empty && pastTasks.docs[0].data().division) {
+          division = pastTasks.docs[0].data().division;
+        }
+      }
+
+      // Create a task
+      const result = await db.collection("tasks").add({
+        ...taskData,
+        division: division,
+        display_id: newDisplayId,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.status(200).json({ success: true, id: result.id });
+    } catch (error) {
+      console.error("Error creating task from webhook:", error);
+      return res.status(500).json({ error: String(error) });
+    }
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

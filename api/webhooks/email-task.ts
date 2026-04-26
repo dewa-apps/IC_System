@@ -1,13 +1,22 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 
+// Attempt to load the built-in config if available
+let appletConfig: any = {};
+try {
+  appletConfig = require('../../firebase-applet-config.json');
+} catch (e) {
+  // Ignore
+}
+
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
   try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id || appletConfig.projectId
       });
     } else {
        // Fallback for Vercel/Glitch if no env variable is set (might fail locally)
@@ -42,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let db: admin.firestore.Firestore;
-    const dbId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID;
+    const dbId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId;
     if (dbId && dbId !== '(default)') {
       const { getFirestore } = require('firebase-admin/firestore');
       db = getFirestore(undefined, dbId);

@@ -1,10 +1,13 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 // Attempt to load the built-in config if available
 let appletConfig: any = {};
 try {
-  appletConfig = require('../../firebase-applet-config.json');
+  appletConfig = JSON.parse(readFileSync(join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
 } catch (e) {
   // Ignore
 }
@@ -53,7 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let db: admin.firestore.Firestore;
     const dbId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId;
     if (dbId && dbId !== '(default)') {
-      const { getFirestore } = require('firebase-admin/firestore');
       db = getFirestore(undefined, dbId);
     } else {
       db = admin.firestore();

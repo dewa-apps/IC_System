@@ -126,6 +126,34 @@ async function startServer() {
     }
   });
 
+  // GAS proxy endpoint
+  app.post("/api/gas-proxy", async (req, res) => {
+    try {
+      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+      
+      const payload = JSON.stringify(req.body);
+      const response = await fetch(gasUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: payload
+      });
+
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+         const json = await response.json();
+         return res.status(response.status).json(json);
+      } else {
+         const text = await response.text();
+         return res.status(response.status).send(text);
+      }
+    } catch (error: any) {
+      console.error("GAS proxy failed", error);
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

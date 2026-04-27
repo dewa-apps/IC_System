@@ -31,7 +31,7 @@ export const formatDoc = (docSnapshot: any) => {
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
-  if (!url.startsWith('/api/')) {
+  if (!url.startsWith('/api/') || url.startsWith('/api/gas-proxy')) {
     return originalFetch(input, init);
   }
 
@@ -99,12 +99,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           
           // Use the same GAS URL used for attachments, assuming it handles action: 'sendEmail'
           // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
-          const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+          const gasUrl = "/api/gas-proxy";
           
           const response = await originalFetch(gasUrl, {
             method: 'POST',
             headers: {
-              'Content-Type': 'text/plain;charset=utf-8',
+              'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               action: 'sendEmail',
@@ -179,12 +179,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
             const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', user)));
             if (!usersSnapshot.empty) {
               const userEmail = usersSnapshot.docs[0].data().email;
-              const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+              const gasUrl = "/api/gas-proxy";
               
               const response = await originalFetch(gasUrl, {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'text/plain;charset=utf-8',
+                  'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                   action: 'sendEmail',
@@ -243,11 +243,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         const usersSnapshot = await getDocs(query(collection(db, 'users'), where('name', '==', authorName)));
         if (!usersSnapshot.empty) {
           const authorEmail = usersSnapshot.docs[0].data().email;
-          const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+          const gasUrl = "/api/gas-proxy";
           
           const response = await originalFetch(gasUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'sendEmail',
               to: authorEmail,
@@ -303,11 +303,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
         if (localStorage.getItem('notify_email') !== 'false') {
           try {
-            const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+            const gasUrl = "/api/gas-proxy";
             
             const response = await originalFetch(gasUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'sendEmail',
                 to: user.email,
@@ -854,12 +854,12 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         const body = JSON.parse(init?.body as string);
         const { sheetId, tasks } = body;
         
-        const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+        const gasUrl = "/api/gas-proxy";
         
         const response = await originalFetch(gasUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             action: 'backupToSheets',
@@ -870,6 +870,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         
         const resultText = await response.text();
         console.log(`Backup GAS Response:`, resultText);
+        
+        if (!response.ok) {
+           throw new Error(resultText || "Proxy response not ok");
+        }
         
         return new Response(JSON.stringify({ success: true, message: 'Backup sent to Google Sheets' }), { status: 200 });
       } catch (e: any) {
@@ -1017,11 +1021,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       });
 
       // Send to Google Apps Script
-      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+      const gasUrl = "/api/gas-proxy";
       const gasResponse = await originalFetch(gasUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           base64: base64Data,
@@ -1029,6 +1033,11 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           mimeType: file.type
         })
       });
+
+      if (!gasResponse.ok) {
+        const errText = await gasResponse.text();
+        throw new Error(errText || "Failed to communicate with Google Apps Script");
+      }
 
       const gasResult = await gasResponse.json();
 

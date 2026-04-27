@@ -87,8 +87,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Find division based on requestor
     let division = "";
-    let authorName = taskData.authorName || taskData.requestor || "Unknown";
-    
     if (taskData.requestor) {
       const pastTasks = await db.collection("tasks")
         .where("requestor", "==", taskData.requestor)
@@ -98,32 +96,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!pastTasks.empty && pastTasks.docs[0].data().division) {
         division = pastTasks.docs[0].data().division;
       }
-      
-      // Also try to find the user in the database to map their name
-      // requestor might be an email like "Name <email@domain.com>" or just "email@domain.com"
-      try {
-        let searchEmail = taskData.requestor;
-        if (searchEmail.includes('<') && searchEmail.includes('>')) {
-           const match = searchEmail.match(/<([^>]+)>/);
-           if (match) searchEmail = match[1];
-        }
-        searchEmail = searchEmail.trim();
-        
-        const usersMatch = await db.collection("users")
-          .where("email", "==", searchEmail)
-          .limit(1)
-          .get();
-          
-        if (!usersMatch.empty && usersMatch.docs[0].data().name) {
-           authorName = usersMatch.docs[0].data().name;
-        } else if (taskData.requestor.includes('<')) {
-           // Fallback to the name part of "Name <email>"
-           const namePart = taskData.requestor.split('<')[0].trim();
-           if (namePart) authorName = namePart.replace(/['"]/g, '');
-        }
-      } catch (e) {
-        console.error("Error finding user for authorName", e);
+    }
+    
+    let authorName = taskData.authorName || taskData.authorId || taskData.requestor || "Unknown";
+    
+    // Also try to find the user in the database to map their name
+    // authorId might be an email like "Name <email@domain.com>" or just "email@domain.com"
+    try {
+      let searchEmail = taskData.authorId || taskData.authorName || taskData.requestor;
+      if (searchEmail.includes('<') && searchEmail.includes('>')) {
+         const match = searchEmail.match(/<([^>]+)>/);
+         if (match) searchEmail = match[1];
       }
+      searchEmail = searchEmail.trim();
+      
+      const usersMatch = await db.collection("users")
+        .where("email", "==", searchEmail)
+        .limit(1)
+        .get();
+        
+      if (!usersMatch.empty && usersMatch.docs[0].data().name) {
+         authorName = usersMatch.docs[0].data().name;
+      } else if ((taskData.authorId || "").includes('<')) {
+         // Fallback to the name part of "Name <email>"
+         const namePart = taskData.authorId.split('<')[0].trim();
+         if (namePart) authorName = namePart.replace(/['"]/g, '');
+      }
+    } catch (e) {
+      console.error("Error finding user for authorName", e);
     }
 
     // Create a task

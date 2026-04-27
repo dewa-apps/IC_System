@@ -55,7 +55,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Webhook endpoint to receive emails from Google Apps Script
   app.post("/api/webhooks/email-task", async (req, res) => {
@@ -110,9 +111,37 @@ async function startServer() {
         }
       }
 
+      let authorName = taskData.authorName || taskData.authorId || taskData.requestor || "Unknown";
+      
+      try {
+        let searchEmail = taskData.authorId || taskData.authorName || taskData.requestor;
+        if (searchEmail && searchEmail.includes('<') && searchEmail.includes('>')) {
+           const match = searchEmail.match(/<([^>]+)>/);
+           if (match) searchEmail = match[1];
+        }
+        if (searchEmail) searchEmail = searchEmail.trim();
+        
+        if (searchEmail) {
+          const usersMatch = await db.collection("users")
+            .where("email", "==", searchEmail)
+            .limit(1)
+            .get();
+            
+          if (!usersMatch.empty && usersMatch.docs[0].data().name) {
+             authorName = usersMatch.docs[0].data().name;
+          } else if ((taskData.authorId || "").includes('<')) {
+             const namePart = taskData.authorId.split('<')[0].trim();
+             if (namePart) authorName = namePart.replace(/['"]/g, '');
+          }
+        }
+      } catch (e) {
+        console.error("Error finding user for authorName", e);
+      }
+
       // Create a task
       const result = await db.collection("tasks").add({
         ...taskData,
+        authorName: authorName,
         division: division,
         display_id: newDisplayId,
         created_at: admin.firestore.FieldValue.serverTimestamp(),

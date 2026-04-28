@@ -70,6 +70,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink } from './types';
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
+import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
@@ -1007,12 +1008,18 @@ export default function App() {
   const [isDeletingComment, setIsDeletingComment] = useState(false);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [dataLinks, setDataLinks] = useState<DataListLink[]>([]);
+  const [dataJadwal, setDataJadwal] = useState<DataListJadwal[]>([]);
   const [metadataOptions, setMetadataOptions] = useState({
     categories: [] as string[],
     brands: [] as string[],
     requestors: [] as string[],
     divisions: [] as string[],
-    category_link: [] as string[]
+    category_link: [] as string[],
+    type_jadwal: [] as string[],
+    category_jadwal: [] as string[],
+    wh_code_jadwal: [] as string[],
+    wh_name_jadwal: [] as string[],
+    wh_partner_jadwal: [] as string[]
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isDeletingAttachment, setIsDeletingAttachment] = useState<string | number | null>(null);
@@ -1276,6 +1283,7 @@ export default function App() {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const dataListLinkRef = React.useRef<DataListLinkViewRef>(null);
+  const dataListJadwalRef = React.useRef<DataListJadwalViewRef>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1674,7 +1682,12 @@ export default function App() {
           brands: data.brands || [],
           requestors: data.requestors || [],
           divisions: data.divisions || [],
-          category_link: data.category_link || []
+          category_link: data.category_link || [],
+          type_jadwal: data.type_jadwal || [],
+          category_jadwal: data.category_jadwal || [],
+          wh_code_jadwal: data.wh_code_jadwal || [],
+          wh_name_jadwal: data.wh_name_jadwal || [],
+          wh_partner_jadwal: data.wh_partner_jadwal || []
         });
       }
     });
@@ -1688,10 +1701,16 @@ export default function App() {
       setDataLinks(links);
     });
 
+    const unsubscribeDataJadwal = onSnapshot(collection(db, 'data_list_jadwal'), (snapshot) => {
+      const jadwal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DataListJadwal[];
+      setDataJadwal(jadwal);
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeTemplates();
       unsubscribeDataLinks();
+      unsubscribeDataJadwal();
     };
   }, [currentUser]);
 
@@ -2528,12 +2547,12 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
-              {['tasks', 'data-list-link'].includes(currentView) && (
+              {['tasks', 'data-list-link', 'data-list-jadwal'].includes(currentView) && (
                 <div className="relative hidden md:block max-w-md w-full ml-4">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
                   <input 
                     type="text" 
-                    placeholder={currentView === 'data-list-link' ? 'Search links...' : 'Search tasks...'}
+                    placeholder={currentView === 'data-list-jadwal' ? 'Search jadwal...' : currentView === 'data-list-link' ? 'Search links...' : 'Search tasks...'}
                     className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -2662,6 +2681,15 @@ export default function App() {
                   >
                     <Plus className="w-4 h-4" />
                     <span className="hidden sm:inline">Add Link</span>
+                  </button>
+                )}
+                {currentView === 'data-list-jadwal' && (
+                  <button 
+                    onClick={() => dataListJadwalRef.current?.openAddModal()}
+                    className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ml-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Add Jadwal</span>
                   </button>
                 )}
               </div>
@@ -3031,6 +3059,13 @@ export default function App() {
             dataLinks={dataLinks} 
             searchQuery={searchQuery}
             categories={Array.from(new Set([...metadataOptions.category_link, ...dataLinks.map(l => l.category).filter(Boolean)]))} 
+          />
+        ) : currentView === 'data-list-jadwal' ? (
+          <DataListJadwalView
+            ref={dataListJadwalRef}
+            dataJadwal={dataJadwal}
+            searchQuery={searchQuery}
+            metadataOptions={metadataOptions}
           />
         ) : currentView.startsWith('data-list-') ? (
           <div className="flex-1 flex flex-col p-6 bg-[var(--bg-body)]">

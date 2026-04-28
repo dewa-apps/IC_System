@@ -76,6 +76,24 @@ export interface Task {
   recurring_pattern?: 'none' | 'daily' | 'weekly' | 'monthly';
 }
 
+export interface DataListJadwal {
+  id: string;
+  display_id?: string;
+  date: string;
+  type: string;
+  category: string;
+  wh_code: string;
+  wh_name: string;
+  wh_partner: string;
+  remark: string;
+  subject_email: string;
+  status_btb_wh: 'None' | 'Open' | 'In Progress' | 'Done';
+  subject_email_btb_brand: string;
+  status_btb_brand: 'None' | 'Open' | 'In Progress' | 'Done';
+  created_at?: any;
+  updated_at?: any;
+}
+
 export interface DataListLink {
   id: string;
   display_id?: number | string; // Optionally we can use a sequence or just use document ID

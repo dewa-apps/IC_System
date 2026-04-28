@@ -157,6 +157,13 @@ service cloud.firestore {
       allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
+    
+    match /data_list_jadwal/{jadwalId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
 
     match /metadata/{docId} {
       allow read: if isAuthenticated();

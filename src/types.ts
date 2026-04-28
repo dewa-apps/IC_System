@@ -76,6 +76,18 @@ export interface Task {
   recurring_pattern?: 'none' | 'daily' | 'weekly' | 'monthly';
 }
 
+export interface DataListLink {
+  id: string;
+  display_id?: number | string; // Optionally we can use a sequence or just use document ID
+  category: string;
+  link_name: string;
+  link_url: string;
+  description: string;
+  note: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type TaskStatus = Task['status'];
 export type TaskPriority = Task['priority'];
 

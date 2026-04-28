@@ -34,6 +34,7 @@ import {
   Link as LinkIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Settings,
   BarChart3,
   Layers,
@@ -67,7 +68,8 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink } from './types';
+import DataListLinkView from './components/DataListLinkView';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
@@ -869,26 +871,94 @@ interface SidebarItemProps {
   collapsed: boolean;
   visible: boolean;
   onClick?: () => void;
+  subItems?: { label: string; active: boolean; onClick: () => void }[];
 }
 
-function SidebarItem({ icon, label, active, collapsed, visible, onClick }: SidebarItemProps) {
+function SidebarItem({ icon, label, active, collapsed, visible, onClick, subItems }: SidebarItemProps) {
+  const hasSubItems = subItems && subItems.length > 0;
+  const isAnySubActive = subItems?.some(sub => sub.active);
+  const [isOpen, setIsOpen] = useState(isAnySubActive || false);
+
+  const handleClick = () => {
+    if (hasSubItems) {
+      setIsOpen(!isOpen);
+    } else if (onClick) {
+      onClick();
+    }
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 p-2.5 rounded-md transition-all group relative ${
-        active 
-          ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium' 
-          : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
-      }`}
-    >
-      <div className="shrink-0">{icon}</div>
-      {!collapsed && <span className="text-sm truncate">{label}</span>}
+    <div className="w-full relative group/sidebarItem">
+      <button
+        onClick={handleClick}
+        className={`w-full flex items-center justify-between p-2.5 rounded-md transition-all ${
+          active || isAnySubActive
+            ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium' 
+            : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="shrink-0">{icon}</div>
+          {!collapsed && <span className="text-sm truncate">{label}</span>}
+        </div>
+        {!collapsed && hasSubItems && (
+          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {/* Flyout or Tooltip for collapsed state */}
       {collapsed && visible && (
-        <div className="fixed left-16 ml-2 px-2 py-1 bg-[var(--bg-sidebar)] text-[var(--text-sidebar)] text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-[1000] shadow-xl pointer-events-none border border-[var(--border-color)]">
-          {label}
+        <div 
+          className={`fixed left-16 ml-2 bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-md shadow-xl opacity-0 invisible group-hover/sidebarItem:opacity-100 group-hover/sidebarItem:visible transition-all z-[1000] overflow-hidden ${
+            hasSubItems ? 'w-48 py-1 pointer-events-auto' : 'px-2 py-1 pointer-events-none'
+          }`}
+          style={{ marginTop: '-36px' }} 
+        >
+          {hasSubItems ? (
+            <>
+              <div className="px-3 py-2 text-xs font-bold text-[var(--text-sidebar-muted)] border-b border-[var(--border-color)] uppercase tracking-wider mb-1">
+                {label}
+              </div>
+              <div className="flex flex-col">
+                {subItems.map((sub, i) => (
+                  <button
+                    key={i}
+                    onClick={sub.onClick}
+                    className={`w-full text-left px-3 py-2 text-sm transition-all ${
+                      sub.active
+                        ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium'
+                        : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <span className="text-xs text-[var(--text-sidebar)] whitespace-nowrap">{label}</span>
+          )}
         </div>
       )}
-    </button>
+      
+      {!collapsed && hasSubItems && isOpen && (
+        <div className="mt-1 ml-9 space-y-1">
+          {subItems.map((sub, i) => (
+            <button
+              key={i}
+              onClick={sub.onClick}
+              className={`w-full flex items-center p-2 text-sm rounded-md transition-all ${
+                sub.active
+                  ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium'
+                  : 'text-[var(--text-sidebar-muted)] hover:text-[var(--text-sidebar)]'
+              }`}
+            >
+              {sub.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -936,11 +1006,13 @@ export default function App() {
   const [attachmentToDelete, setAttachmentToDelete] = useState<string | number | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [dataLinks, setDataLinks] = useState<DataListLink[]>([]);
   const [metadataOptions, setMetadataOptions] = useState({
     categories: [] as string[],
     brands: [] as string[],
     requestors: [] as string[],
-    divisions: [] as string[]
+    divisions: [] as string[],
+    category_link: [] as string[]
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isDeletingAttachment, setIsDeletingAttachment] = useState<string | number | null>(null);
@@ -954,7 +1026,7 @@ export default function App() {
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [selectedLinkType, setSelectedLinkType] = useState<LinkType>('relates_to');
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [currentView, setCurrentView] = useState<'tasks' | 'reports' | 'settings' | 'audit'>('tasks');
+  const [currentView, setCurrentView] = useState<string>('tasks');
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1585,7 +1657,8 @@ export default function App() {
           categories: data.categories || [],
           brands: data.brands || [],
           requestors: data.requestors || [],
-          divisions: data.divisions || []
+          divisions: data.divisions || [],
+          category_link: data.category_link || []
         });
       }
     });
@@ -1594,9 +1667,15 @@ export default function App() {
       setTemplates(snapshot.docs.map(formatDoc) as Template[]);
     });
 
+    const unsubscribeDataLinks = onSnapshot(collection(db, 'data_list_link'), (snapshot) => {
+      const links = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DataListLink[];
+      setDataLinks(links);
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeTemplates();
+      unsubscribeDataLinks();
     };
   }, [currentUser]);
 
@@ -2338,6 +2417,19 @@ export default function App() {
               onClick={() => setCurrentView('tasks')}
             />
             <SidebarItem 
+              icon={<ListIcon className="w-5 h-5" />} 
+              label="Data List" 
+              active={currentView.startsWith('data-list')} 
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+              subItems={[
+                { label: 'Data List Link', active: currentView === 'data-list-link', onClick: () => setCurrentView('data-list-link') },
+                { label: 'Data List Jadwal', active: currentView === 'data-list-jadwal', onClick: () => setCurrentView('data-list-jadwal') },
+                { label: 'Data List Klaim', active: currentView === 'data-list-klaim', onClick: () => setCurrentView('data-list-klaim') },
+                { label: 'Data List Warehouse', active: currentView === 'data-list-warehouse', onClick: () => setCurrentView('data-list-warehouse') },
+              ]}
+            />
+            <SidebarItem 
               icon={<BarChart3 className="w-5 h-5" />} 
               label="Reports" 
               active={currentView === 'reports'}
@@ -2408,7 +2500,14 @@ export default function App() {
                 <Menu className="w-5 h-5" />
               </button>
               <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                {currentView === 'settings' ? 'Settings' : currentView === 'reports' ? 'Reports' : currentView === 'audit' ? 'Audit Log' : 'Tasks'}
+                {currentView === 'settings' ? 'Settings' 
+                  : currentView === 'reports' ? 'Reports' 
+                  : currentView === 'audit' ? 'Audit Log' 
+                  : currentView === 'data-list-link' ? 'Data List Link'
+                  : currentView === 'data-list-jadwal' ? 'Data List Jadwal'
+                  : currentView === 'data-list-klaim' ? 'Data List Klaim'
+                  : currentView === 'data-list-warehouse' ? 'Data List Warehouse'
+                  : 'Tasks'}
               </h2>
             </div>
             
@@ -2889,6 +2988,27 @@ export default function App() {
               </div>
             </div>
           )
+        ) : currentView === 'data-list-link' ? (
+          <DataListLinkView 
+            dataLinks={dataLinks} 
+            categories={Array.from(new Set([...metadataOptions.category_link, ...dataLinks.map(l => l.category).filter(Boolean)]))} 
+          />
+        ) : currentView.startsWith('data-list-') ? (
+          <div className="flex-1 flex flex-col p-6 bg-[var(--bg-body)]">
+            <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-8 text-center shadow-sm">
+              <ListIcon className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+                {currentView === 'data-list-link' ? 'Data List Link'
+                  : currentView === 'data-list-jadwal' ? 'Data List Jadwal'
+                  : currentView === 'data-list-klaim' ? 'Data List Klaim'
+                  : currentView === 'data-list-warehouse' ? 'Data List Warehouse'
+                  : 'Data List'}
+              </h2>
+              <p className="text-[var(--text-secondary)]">
+                This module is under construction. Data will be displayed here soon.
+              </p>
+            </div>
+          </div>
         ) : (
           <>
             {/* Main Content */}

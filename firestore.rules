@@ -151,6 +151,13 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
+    match /data_list_link/{linkId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
     match /metadata/{docId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();

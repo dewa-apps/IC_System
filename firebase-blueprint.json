@@ -103,6 +103,48 @@
         }
       },
       "required": ["type", "recipient", "title", "message", "read", "created_at"]
+    },
+    "DataListLink": {
+      "title": "DataListLink",
+      "description": "A link in the Data List Link section.",
+      "type": "object",
+      "properties": {
+        "display_id": {
+          "type": "string",
+          "description": "Optional display ID."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of the link."
+        },
+        "link_name": {
+          "type": "string",
+          "description": "Name of the link."
+        },
+        "link_url": {
+          "type": "string",
+          "description": "The actual URL."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the link."
+        },
+        "note": {
+          "type": "string",
+          "description": "Any additional note for the link."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp."
+        }
+      },
+      "required": ["category", "link_name", "link_url", "created_at", "updated_at"]
     }
   },
   "firestore": {
@@ -123,6 +165,12 @@
         "$ref": "#/entities/Notification"
       },
       "description": "Stores user notifications."
+    },
+    "/data_list_link/{linkId}": {
+      "schema": {
+        "$ref": "#/entities/DataListLink"
+      },
+      "description": "Stores all data list links."
     }
   }
 }

@@ -1,17 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { DataListLink } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+export interface DataListLinkViewRef {
+  openAddModal: () => void;
+}
 
 interface DataListLinkViewProps {
   dataLinks: DataListLink[];
   categories: string[];
+  searchQuery: string;
 }
 
-export default function DataListLinkView({ dataLinks, categories }: DataListLinkViewProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(({ dataLinks, categories, searchQuery }, ref) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
   // Sort
@@ -46,6 +50,107 @@ export default function DataListLinkView({ dataLinks, categories }: DataListLink
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImport = async () => {
+    if (!window.confirm('Are you sure you want to import data? This will create multiple records.')) return;
+    
+    setIsImporting(true);
+    try {
+      const csvText = (await import('../data/links.csv?raw')).default;
+      
+      const rows = csvText.split('\n').filter(r => r.trim());
+      const headerObj = rows[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const recordsToInsert = [];
+      const newCategories = new Set<string>();
+
+      for (let i = 1; i < rows.length; i++) {
+        // Simple manual split that ignores commas inside quotes
+        let inQuotes = false;
+        let currentValue = '';
+        const values = [];
+        
+        for (let j = 0; j < rows[i].length; j++) {
+          const char = rows[i][j];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(currentValue);
+            currentValue = '';
+          } else {
+            currentValue += char;
+          }
+        }
+        values.push(currentValue);
+
+        while(values.length < headerObj.length) values.push('');
+
+        const category = values[0]?.trim() || '';
+        const link_name = values[1]?.trim() || '';
+        const link_url = values[2]?.trim() || '';
+        const description = values[3]?.trim()?.replace(/^"|"$/g, '') || '';
+        const note = values[4]?.trim()?.replace(/^"|"$/g, '') || '';
+
+        if (!link_name || !link_url) continue;
+
+        let nextNum = 1;
+        if (category) {
+          const catInitial = category.charAt(0).toUpperCase();
+          const existingSameCat = dataLinks.filter(l => l.category && l.display_id && l.category.charAt(0).toUpperCase() === catInitial);
+          const newSameCat = recordsToInsert.filter(l => l.category && l.category.charAt(0).toUpperCase() === catInitial);
+          let maxNum = 0;
+          for (const l of [...existingSameCat, ...newSameCat]) {
+             if (l.display_id && l.display_id.startsWith(`${catInitial}-`)) {
+               const numStr = l.display_id.split('-')[1];
+               const num = parseInt(numStr, 10);
+               if (!isNaN(num) && num > maxNum) {
+                 maxNum = num;
+               }
+             }
+          }
+          nextNum = maxNum + 1;
+        }
+
+        const newDisplayId = category ? `${category.charAt(0).toUpperCase()}-${nextNum.toString().padStart(3, '0')}` : '';
+
+        if (category) newCategories.add(category);
+
+        recordsToInsert.push({
+          category,
+          link_name,
+          link_url,
+          description,
+          note,
+          display_id: newDisplayId
+        });
+      }
+
+      for (const record of recordsToInsert) {
+        await addDoc(collection(db, 'data_list_link'), {
+          ...record,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+      }
+
+      if (newCategories.size > 0) {
+         try {
+           await setDoc(doc(db, 'metadata', 'dropdowns'), {
+             category_link: arrayUnion(...Array.from(newCategories))
+           }, { merge: true });
+         } catch (err) {
+           console.error("Failed to update metadata categories", err);
+         }
+      }
+
+      toast.success(`Successfully imported ${recordsToInsert.length} links!`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to import data');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   // Handlers for resizing
   const handleResizeStart = (e: React.MouseEvent, key: string) => {
@@ -126,6 +231,10 @@ export default function DataListLinkView({ dataLinks, categories }: DataListLink
     setFormData({ category: '', link_name: '', link_url: '', description: '', note: '' });
     setIsModalOpen(true);
   };
+
+  useImperativeHandle(ref, () => ({
+    openAddModal
+  }));
 
   const openEditModal = (link: DataListLink) => {
     setEditingLink(link);
@@ -225,37 +334,9 @@ export default function DataListLinkView({ dataLinks, categories }: DataListLink
 
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
-      <div className="mb-4 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <ListIcon className="w-5 h-5 text-[var(--accent-color)]" />
-            Data List Link
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)]">Manage your useful links across categories</p>
-        </div>
-        <button 
-          onClick={openAddModal}
-          className="btn-primary px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Add Link
-        </button>
-      </div>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2 bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
-        <div className="relative max-w-md w-full shrink-0 flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-          <input 
-            type="text" 
-            placeholder="Search links..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] transition-colors text-sm"
-          />
-        </div>
-        
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
         <select
-          className="px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] text-sm shrink-0"
+          className="px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] text-sm shrink-0 min-w-[200px]"
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
         >
@@ -264,6 +345,14 @@ export default function DataListLinkView({ dataLinks, categories }: DataListLink
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
+        <button 
+          onClick={handleImport}
+          disabled={isImporting}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded hover:bg-[var(--bg-primary)] transition-colors disabled:opacity-50"
+        >
+          <Upload className="w-4 h-4" />
+          {isImporting ? 'Importing...' : 'Import Data'}
+        </button>
       </div>
 
       <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm flex flex-col flex-1 transition-colors duration-200">
@@ -520,4 +609,6 @@ export default function DataListLinkView({ dataLinks, categories }: DataListLink
       )}
     </div>
   );
-}
+});
+
+export default DataListLinkView;

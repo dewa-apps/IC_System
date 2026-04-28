@@ -69,7 +69,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink } from './types';
-import DataListLinkView from './components/DataListLinkView';
+import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
@@ -1275,6 +1275,7 @@ export default function App() {
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const dataListLinkRef = React.useRef<DataListLinkViewRef>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -2512,12 +2513,12 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
-              {currentView === 'tasks' && (
+              {['tasks', 'data-list-link'].includes(currentView) && (
                 <div className="relative hidden md:block max-w-md w-full ml-4">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
                   <input 
                     type="text" 
-                    placeholder="Search tasks..."
+                    placeholder={currentView === 'data-list-link' ? 'Search links...' : 'Search tasks...'}
                     className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -2637,6 +2638,15 @@ export default function App() {
                   >
                     <Plus className="w-4 h-4" />
                     <span className="hidden sm:inline">Create</span>
+                  </button>
+                )}
+                {currentView === 'data-list-link' && (
+                  <button 
+                    onClick={() => dataListLinkRef.current?.openAddModal()}
+                    className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ml-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Add Link</span>
                   </button>
                 )}
               </div>
@@ -2990,7 +3000,9 @@ export default function App() {
           )
         ) : currentView === 'data-list-link' ? (
           <DataListLinkView 
+            ref={dataListLinkRef}
             dataLinks={dataLinks} 
+            searchQuery={searchQuery}
             categories={Array.from(new Set([...metadataOptions.category_link, ...dataLinks.map(l => l.category).filter(Boolean)]))} 
           />
         ) : currentView.startsWith('data-list-') ? (

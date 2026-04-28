@@ -85,6 +85,55 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // Jika request adalah untuk backup datalist links ke Google Sheets
+    if (data.action === 'backupDataListLinksToSheets') {
+      var sheetId = data.sheetId; // ID spreadsheet
+      var sheetName = data.sheetName || 'LINK'; // Sheet yang dituju
+      var spreadsheet = SpreadsheetApp.openById(sheetId);
+      var sheet = spreadsheet.getSheetByName(sheetName);
+      
+      // Jika sheet tidak ada, buat sheet baru
+      if (!sheet) {
+        sheet = spreadsheet.insertSheet(sheetName);
+      } else {
+        sheet.clear();
+      }
+      
+      var links = data.links;
+      if (!links || links.length === 0) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'success',
+          message: "No links to backup"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Category", "Link Name", "Link URL", 
+        "Description", "Note"
+      ];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+
+      var rows = links.map(function(link) {
+        return [
+          link.id || "",
+          link.display_id || "",
+          link.category || "",
+          link.link_name || "",
+          link.link_url || "",
+          link.description || "",
+          link.note || ""
+        ];
+      });
+      
+      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Backup links sukses!'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // Jika request adalah untuk upload file
     var fileData = data.base64; 
     var fileName = data.fileName;

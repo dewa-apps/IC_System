@@ -1450,6 +1450,11 @@ export default function App() {
     tasksRef.current = tasks;
   }, [tasks]);
 
+  const dataLinksRef = useRef(dataLinks);
+  useEffect(() => {
+    dataLinksRef.current = dataLinks;
+  }, [dataLinks]);
+
   useEffect(() => {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
@@ -1463,6 +1468,16 @@ export default function App() {
            body: JSON.stringify({ 
              sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
              tasks: tasksRef.current
+           })
+         });
+         
+         await apiFetch('/api/backup-links-to-sheets', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ 
+             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+             sheetName: 'LINK',
+             links: dataLinksRef.current
            })
          });
        } catch (err) {
@@ -2871,7 +2886,7 @@ export default function App() {
                         <button 
                           onClick={async () => {
                             setIsToolsMenuOpen(false);
-                            const toastId = toast.loading('Backing up tasks to Google Sheets...');
+                            const toastId = toast.loading('Backing up data to Google Sheets...');
                             try {
                               const res = await apiFetch('/api/backup-to-sheets', {
                                 method: 'POST',
@@ -2881,7 +2896,19 @@ export default function App() {
                                   tasks: tasks // directly passing front-end state 
                                 })
                               });
-                              if (!res.ok) throw new Error('Backup failed');
+                              if (!res.ok) throw new Error('Task backup failed');
+                              
+                              const linksRes = await apiFetch('/api/backup-links-to-sheets', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                  sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+                                  sheetName: 'LINK',
+                                  links: dataLinks // directly passing front-end state
+                                })
+                              });
+                              if (!linksRes.ok) throw new Error('Links backup failed');
+                              
                               toast.success('Backup to Google Sheets completed successfully!', { id: toastId });
                             } catch (error) {
                               console.error(error);

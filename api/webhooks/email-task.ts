@@ -136,6 +136,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    // Log activity
+    try {
+      await db.collection("activity_log").add({
+        task_id: result.id,
+        user: authorName,
+        action: "Created task",
+        details: `Title: ${taskData.title}`,
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (logError) {
+      console.error("Error creating activity log:", logError);
+    }
+
     return res.status(200).json({ success: true, id: result.id });
   } catch (error) {
     console.error("Error creating task from webhook:", error);

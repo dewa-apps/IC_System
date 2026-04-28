@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -147,6 +147,19 @@ async function startServer() {
         created_at: admin.firestore.FieldValue.serverTimestamp(),
         updated_at: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Log activity
+      try {
+        await db.collection("activity_log").add({
+          task_id: result.id,
+          user: authorName,
+          action: "Created task",
+          details: `Title: ${taskData.title}`,
+          created_at: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (logError) {
+        console.error("Error creating activity log:", logError);
+      }
 
       return res.status(200).json({ success: true, id: result.id });
     } catch (error) {

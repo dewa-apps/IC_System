@@ -63,10 +63,12 @@ function processEmailTasks() {
     
     // Cari pesan balasan mana yang menyertakan teks #task#
     var taskMessage = null;
+    var taskMessageIndex = -1;
     for (var j = messages.length - 1; j >= 0; j--) {
       var body = messages[j].getPlainBody() || messages[j].getBody();
       if (body.indexOf("#task#") !== -1) {
         taskMessage = messages[j];
+        taskMessageIndex = j;
         break;
       }
     }
@@ -77,8 +79,29 @@ function processEmailTasks() {
       continue;
     }
     
-    // Request Date dari email original
-    var requestDate = firstMessage.getDate();
+    // Tentukan pesan target yang merupakan request aslinya
+    // (Berdasarkan tombol "Reply" yang ditekan Reva / In-Reply-To header)
+    var requestMessage = null;
+    var inReplyTo = taskMessage.getHeader("In-Reply-To");
+    
+    if (inReplyTo) {
+      var targetId = inReplyTo.trim();
+      for (var k = 0; k < messages.length; k++) {
+        var msgId = messages[k].getHeader("Message-ID");
+        if (msgId && msgId.trim() === targetId) {
+          requestMessage = messages[k];
+          break;
+        }
+      }
+    }
+    
+    // Fallback: Jika tidak ditemukan In-Reply-To (atau error), gunakan pesan sebelum balasan Reva di thread
+    if (!requestMessage) {
+      requestMessage = (taskMessageIndex > 0) ? messages[taskMessageIndex - 1] : taskMessage;
+    }
+    
+    // Request Date dari email original/target
+    var requestDate = requestMessage.getDate();
     var dueDate = addWorkingDays(requestDate, 3);
     
     // Ambil string di sebelah #task#
@@ -90,7 +113,7 @@ function processEmailTasks() {
     }
     
     // Ambil requester dan creator
-    var requestorRaw = firstMessage.getFrom();
+    var requestorRaw = requestMessage.getFrom();
     var requestorName = extractNameFromEmail(requestorRaw);
     
     var creatorRaw = taskMessage.getFrom();
@@ -105,6 +128,7 @@ function processEmailTasks() {
       priority: "LOW",
       requestor: requestorName,
       authorId: creatorName, 
+      request_date: formatDateStr(requestDate),
       due_date: formatDateStr(dueDate),
       email_thread_id: thread.getId()
     };

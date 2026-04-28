@@ -3222,7 +3222,7 @@ export default function App() {
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.category}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
-                      placeholder="e.g. Design, Marketing"
+                      placeholder="e.g. Create Movement, Adjustment Stock"
                     />
                     <datalist id="categories">
                       {uniqueCategories.map(cat => <option key={cat} value={cat} />)}
@@ -3236,7 +3236,7 @@ export default function App() {
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.brand}
                       onChange={e => setFormData({ ...formData, brand: e.target.value })}
-                      placeholder="e.g. Brand A, Brand B"
+                      placeholder="e.g. Levis, Samsonite"
                     />
                     <datalist id="brands">
                       {uniqueBrands.map(brand => <option key={brand} value={brand} />)}
@@ -3267,7 +3267,7 @@ export default function App() {
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                       value={formData.division}
                       onChange={e => setFormData({ ...formData, division: e.target.value })}
-                      placeholder="e.g. Sales, HR"
+                      placeholder="e.g. Operations, Commercial"
                     />
                     <datalist id="divisions">
                       {uniqueDivisions.map(div => <option key={div} value={div} />)}

@@ -596,7 +596,7 @@ export default function SettingsView({
                     <div className="flex-1">
                       <h3 className="font-medium text-[var(--text-primary)]">Automated Backup to Google Sheets</h3>
                       <p className="text-sm text-[var(--text-secondary)] mt-1 mb-4">
-                        Automatically export your entire task database and data links to Google Sheets periodically. You must keep the application open in your browser to process these backups.
+                        Automatically export your entire task database, data links, and jadwal to Google Sheets periodically. You must keep the application open in your browser to process these backups.
                       </p>
                       
                       <div className="flex items-center gap-4 mb-4">

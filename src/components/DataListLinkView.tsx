@@ -205,9 +205,12 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
     }
 
     setIsSaving(true);
+    const currentEditingLink = editingLink;
+    setIsModalOpen(false); // Close immediately for better UX
+
     try {
-      if (editingLink) {
-        await updateDoc(doc(db, 'data_list_link', editingLink.id), {
+      if (currentEditingLink) {
+        await updateDoc(doc(db, 'data_list_link', currentEditingLink.id), {
           ...formData,
           updated_at: serverTimestamp()
         });
@@ -250,8 +253,6 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
           console.error("Failed to update metadata options", err);
         }
       }
-
-      setIsModalOpen(false);
     } catch (e) {
       console.error(e);
       toast.error('Failed to save link');
@@ -262,16 +263,17 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
 
   const handleDelete = async (id: string) => {
     setIsDeleting(true);
+    setShowDeleteConfirm(false);
+    setIsModalOpen(false); // Close immediately for better UX
+
     try {
       await deleteDoc(doc(db, 'data_list_link', id));
       toast.success('Link deleted successfully');
-      setIsModalOpen(false);
     } catch (e) {
       console.error(e);
       toast.error('Failed to delete link');
     } finally {
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
     }
   };
 

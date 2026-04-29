@@ -94,6 +94,27 @@ export interface DataListJadwal {
   updated_at?: any;
 }
 
+export interface DataListKlaim {
+  id: string;
+  display_id?: string;
+  claim_type: string;
+  invoice_date: string;
+  invoice_no: string;
+  description: string;
+  subject_email: string;
+  link_data: string;
+  whp_name: string;
+  partner: string;
+  claim_value: number;
+  tax: number;
+  due: number;
+  subsidiary: string;
+  status: 'Open' | 'In Progress' | 'Pending Finance' | 'Done';
+  remark: string;
+  created_at?: any;
+  updated_at?: any;
+}
+
 export interface DataListLink {
   id: string;
   display_id?: number | string; // Optionally we can use a sequence or just use document ID

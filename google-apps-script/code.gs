@@ -134,13 +134,103 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // Jika request adalah untuk backup datalist jadwal ke Google Sheets
+    if (data.action === 'backupDataListJadwalToSheets') {
+      var sheetId = data.sheetId; // ID spreadsheet
+      var sheetName = data.sheetName || 'JADWAL'; // Sheet yang dituju
+      var spreadsheet = SpreadsheetApp.openById(sheetId);
+      var sheet = spreadsheet.getSheetByName(sheetName);
+      
+      // Jika sheet tidak ada, buat sheet baru
+      if (!sheet) {
+        sheet = spreadsheet.insertSheet(sheetName);
+      } else {
+        sheet.clear();
+      }
+      
+      var jadwalList = data.jadwal;
+      if (!jadwalList || jadwalList.length === 0) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'success',
+          message: "No jadwal to backup"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Date", "Type", "Category", "WH Code",
+        "WH Name", "WH Partner", "Remark", "Subject Email", "Status BTB WH",
+        "Subject Email BTB Brand", "Status BTB Brand"
+      ];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+
+      var rows = jadwalList.map(function(item) {
+        return [
+          item.id || "",
+          item.display_id || "",
+          item.date || "",
+          item.type || "",
+          item.category || "",
+          item.wh_code || "",
+          item.wh_name || "",
+          item.wh_partner || "",
+          item.remark || "",
+          item.subject_email || "",
+          item.status_btb_wh || "",
+          item.subject_email_btb_brand || "",
+          item.status_btb_brand || ""
+        ];
+      });
+      
+      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Backup jadwal sukses!'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Jika request adalah untuk upload file klaim
+    if (data.action === 'uploadKlaim') {
+      var fileData = data.base64;
+      var fileName = data.fileName;
+      var mimeType = data.mimeType;
+      
+      var rootFolder = DriveApp.getFolderById("1qlEw1DgqtbJ5AR_i0IdAf1AgyxPT6nxY");
+      
+      var yearStr = data.invoiceDate ? data.invoiceDate.substring(0,4) : new Date().getFullYear().toString();
+      var yearFolders = rootFolder.getFoldersByName(yearStr);
+      var yearFolder = yearFolders.hasNext() ? yearFolders.next() : rootFolder.createFolder(yearStr);
+
+      var whpStr = data.whpName || "Unknown WHP";
+      var whpFolders = yearFolder.getFoldersByName(whpStr);
+      var whpFolder = whpFolders.hasNext() ? whpFolders.next() : yearFolder.createFolder(whpStr);
+
+      var idStr = data.klaimId || "Unknown ID";
+      var idFolders = whpFolder.getFoldersByName(idStr);
+      var idFolder = idFolders.hasNext() ? idFolders.next() : whpFolder.createFolder(idStr);
+
+      var decodedData = Utilities.base64Decode(fileData);
+      var blob = Utilities.newBlob(decodedData, mimeType, fileName);
+
+      var file = idFolder.createFile(blob);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        fileUrl: file.getUrl(),
+        fileId: file.getId(),
+        folderUrl: idFolder.getUrl(),
+        folderId: idFolder.getId()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // Jika request adalah untuk upload file
     var fileData = data.base64; 
     var fileName = data.fileName;
     var mimeType = data.mimeType;
     
     // MASUKKAN ID FOLDER SHARED DRIVE ANDA DI SINI
-    var folderId = "PASTE_ID_FOLDER_DI_SINI"; 
+    var folderId = "1AO6iPo28KjgKk1SKTwsMLVb1jr8_kMrM"; 
     
     // Decode file dan buat blob
     var decodedData = Utilities.base64Decode(fileData);

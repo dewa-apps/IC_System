@@ -6,12 +6,13 @@ import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, List
 import toast from 'react-hot-toast';
 
 export interface DataListJadwalViewRef {
-  openAddModal: () => void;
+  openAddModal: (defaultDate?: string) => void;
 }
 
 interface DataListJadwalViewProps {
   dataJadwal: DataListJadwal[];
   searchQuery: string;
+  onClearSearch?: () => void;
   metadataOptions: {
     type_jadwal: string[];
     category_jadwal: string[];
@@ -38,7 +39,7 @@ const getStatusBadgeClass = (status: string) => {
   }
 };
 
-const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewProps>(({ dataJadwal, searchQuery, metadataOptions }, ref) => {
+const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewProps>(({ dataJadwal, searchQuery, onClearSearch, metadataOptions }, ref) => {
   
   // Filters
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -46,8 +47,20 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   const [selectedWHPartners, setSelectedWHPartners] = useState<string[]>([]);
 
   // Sort
-  const [sortField, setSortField] = useState<keyof DataListJadwal>('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<keyof DataListJadwal>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Date Filter
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+
+  // View Mode
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -183,6 +196,55 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
       filtered = filtered.filter(j => selectedWHPartners.includes(j.wh_partner));
     }
 
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      let start = new Date(0);
+      let end = new Date();
+      end.setHours(23, 59, 59, 999);
+
+      if (dateFilter === 'today') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (dateFilter === 'last7') {
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        start.setHours(0, 0, 0, 0);
+      } else if (dateFilter === 'thisMonth') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else if (dateFilter === 'lastMonth') {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'thisYear') {
+        start = new Date(now.getFullYear(), 0, 1);
+      } else if (dateFilter === 'lastYear') {
+        start = new Date(now.getFullYear() - 1, 0, 1);
+        end = new Date(now.getFullYear() - 1, 11, 31);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'semester1') {
+        start = new Date(now.getFullYear(), 0, 1);
+        end = new Date(now.getFullYear(), 5, 30);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'semester2') {
+        start = new Date(now.getFullYear(), 6, 1);
+        end = new Date(now.getFullYear(), 11, 31);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'custom') {
+        if (startDate) {
+          start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+        }
+        if (endDate) {
+          end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+        }
+      }
+
+      filtered = filtered.filter(j => {
+        if (!j.date) return false;
+        const taskDate = new Date(j.date);
+        return taskDate >= start && taskDate <= end;
+      });
+    }
+
     filtered.sort((a, b) => {
       let aVal: any = a[sortField];
       let bVal: any = b[sortField];
@@ -197,15 +259,15 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     });
 
     return filtered;
-  }, [dataJadwal, searchQuery, selectedTypes, selectedCategories, selectedWHPartners, sortField, sortOrder]);
+  }, [dataJadwal, searchQuery, selectedTypes, selectedCategories, selectedWHPartners, sortField, sortOrder, dateFilter, startDate, endDate]);
 
   const totalPages = Math.max(1, Math.ceil(filteredJadwal.length / rowsPerPage));
   const paginatedJadwal = filteredJadwal.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
-  const openAddModal = () => {
+  const openAddModal = (defaultDate?: string) => {
     setEditingJadwal(null);
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: defaultDate || new Date().toISOString().split('T')[0],
       type: '',
       category: '',
       wh_code: '',
@@ -256,6 +318,10 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     }
 
     setIsSaving(true);
+    const codePrefix = `J-`;
+    const currentEditingJadwal = editingJadwal;
+    closeModal(); // Close immediately for better UX
+    
     try {
       const dbRef = collection(db, 'data_list_jadwal');
       
@@ -264,8 +330,8 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
         updated_at: serverTimestamp(),
       };
 
-      if (editingJadwal) {
-        await updateDoc(doc(db, 'data_list_jadwal', editingJadwal.id), saveData);
+      if (currentEditingJadwal) {
+        await updateDoc(doc(db, 'data_list_jadwal', currentEditingJadwal.id), saveData);
         toast.success('Jadwal updated successfully');
       } else {
         const codePrefix = `J-`;
@@ -316,8 +382,6 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
           console.error("Failed to update dropdowns", e);
         }
       }
-
-      closeModal();
     } catch (error) {
       console.error(error);
       toast.error('Failed to save jadwal');
@@ -329,10 +393,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   const handleDelete = async () => {
     if (!editingJadwal) return;
     setIsDeleting(true);
+    const currentId = editingJadwal.id;
+    closeModal(); // UX immediate close
+    
     try {
-      await deleteDoc(doc(db, 'data_list_jadwal', editingJadwal.id));
+      await deleteDoc(doc(db, 'data_list_jadwal', currentId));
       toast.success('Jadwal deleted successfully');
-      closeModal();
     } catch (error) {
       console.error(error);
       toast.error('Failed to delete jadwal');
@@ -408,11 +474,110 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     }
   };
 
+  const renderCalendarView = () => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(new Date(year, month, d));
+    while (days.length % 7 !== 0) days.push(null);
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+    const jadwalByDate = filteredJadwal.reduce((acc, j) => {
+      if (j.date) {
+        if (!acc[j.date]) acc[j.date] = [];
+        acc[j.date].push(j);
+      }
+      return acc;
+    }, {} as Record<string, typeof filteredJadwal>);
+
+    return (
+      <div className="flex-1 flex flex-col h-full bg-[var(--bg-surface)]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
+          <h2 className="text-sm font-bold text-[var(--text-primary)]">
+            {monthNames[month]} {year}
+          </h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setCalendarMonth(new Date(year, month - 1, 1))} className="p-1 hover:bg-[var(--bg-secondary)] rounded transition-colors border border-[var(--border-color)]">
+              <ChevronLeft className="w-4 h-4 text-[var(--text-primary)]" />
+            </button>
+            <button onClick={() => setCalendarMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))} className="text-xs font-medium px-2 py-1 border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] rounded transition-colors text-[var(--text-primary)]">
+              Today
+            </button>
+            <button onClick={() => setCalendarMonth(new Date(year, month + 1, 1))} className="p-1 hover:bg-[var(--bg-secondary)] rounded transition-colors border border-[var(--border-color)]">
+              <ChevronRight className="w-4 h-4 text-[var(--text-primary)]" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto min-h-0 bg-[var(--bg-body)] custom-scrollbar border-t-0">
+          <div className="sticky top-0 z-10 grid grid-cols-7 gap-px bg-[var(--border-color)] border-b border-[var(--border-color)] shadow-sm">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="py-2 text-center text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider bg-[var(--bg-secondary)]">
+                {day}
+              </div>
+            ))}
+          </div>
+          
+          <div className="grid grid-cols-7 auto-rows-[minmax(120px,1fr)] gap-px bg-[var(--border-color)]">
+            {days.map((dateObj, i) => {
+              if (!dateObj) {
+                return <div key={`empty-${i}`} className="min-h-[120px] bg-[var(--bg-body)] opacity-50" />;
+              }
+              
+              const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+              const todaysJadwal = jadwalByDate[dateStr] || [];
+              const isToday = new Date().toDateString() === dateObj.toDateString();
+
+              return (
+                <div key={dateStr} className="min-h-[120px] p-1.5 flex flex-col gap-1 transition-colors hover:bg-[var(--bg-secondary-hover)] relative group bg-[var(--bg-surface)]">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full ${isToday ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]' : 'text-[var(--text-primary)]'}`}>
+                      {dateObj.getDate()}
+                    </span>
+                    <button 
+                      onClick={() => openAddModal(dateStr)}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[var(--bg-primary)] rounded transition-all text-[var(--text-secondary)] hover:text-[var(--accent-color)]"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+                    {todaysJadwal.map(item => (
+                      <div 
+                        key={item.id} 
+                        onClick={() => openEditModal(item)}
+                        className="text-[10px] border border-[var(--border-color)] bg-[var(--bg-primary)] rounded p-1 cursor-pointer hover:border-[var(--accent-color)] hover:shadow-sm transition-all flex flex-col gap-0.5"
+                        title={`Category: ${item.category}\nWH Code: ${item.wh_code}\nWH Name: ${item.wh_name}\nWH Partner: ${item.wh_partner}`}
+                      >
+                        <div className="font-bold text-[var(--text-primary)] truncate">{item.display_id || item.wh_code}</div>
+                        <div className="text-[var(--text-secondary)] truncate">{item.type}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className={`text-[8px] px-1 py-0.5 rounded leading-none ${getStatusBadgeClass(item.status_btb_wh)}`}>{item.status_btb_wh === 'None' ? 'W:N' : `W:${item.status_btb_wh[0]}`}</span>
+                          <span className={`text-[8px] px-1 py-0.5 rounded leading-none ${getStatusBadgeClass(item.status_btb_brand)}`}>{item.status_btb_brand === 'None' ? 'B:N' : `B:${item.status_btb_brand[0]}`}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
       <div className="mb-4 flex items-center justify-between gap-4">
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Filter Dropdown */}
           <div className="relative group/main z-20">
             <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
@@ -494,43 +659,112 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
               </div>
             )}
 
-            {activeFiltersCount > 0 && (
-              <>
-                <div className="h-px bg-[var(--border-color)] my-1" />
-                <div className="px-2">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedTypes([]);
-                      setSelectedCategories([]);
-                      setSelectedWHPartners([]);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded"
-                  >
-                    Clear All Filters
-                  </button>
-                </div>
-              </>
-            )}
+          </div>
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex items-center gap-2 bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+            <Calendar className="w-4 h-4 text-[var(--text-secondary)] ml-2" />
+            <select
+              value={dateFilter}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent border-none text-sm text-[var(--text-primary)] focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
+            >
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="all">All Time</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="today">Today</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="last7">Last 7 Days</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisMonth">This Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastMonth">Last Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisYear">This Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastYear">Last Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester1">Semester 1 (Jan-Jun)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester2">Semester 2 (Jul-Dec)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="custom">Custom Range</option>
+            </select>
+          </div>
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm px-2 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
+              />
+              <span className="text-[var(--text-secondary)]">-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm px-2 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
+              />
+            </div>
+          )}
+
+          {(activeFiltersCount > 0 || dateFilter !== 'all' || searchQuery.length > 0) && (
+            <button 
+              onClick={() => {
+                setSelectedTypes([]);
+                setSelectedCategories([]);
+                setSelectedWHPartners([]);
+                setDateFilter('all');
+                setStartDate('');
+                setEndDate('');
+                setCurrentPage(1);
+                onClearSearch?.();
+              }}
+              className="px-3 py-1.5 text-xs text-red-500 hover:text-white bg-red-500/10 hover:bg-red-500 border border-red-500/20 rounded-md transition-colors font-medium"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          {legacyJadwalCount > 0 && (
+            <button 
+              onClick={fixLegacyIds}
+              className="px-3 py-1.5 text-xs border border-orange-500/30 text-orange-600 bg-orange-500/10 rounded-md hover:bg-orange-500/20 transition-colors font-medium flex items-center gap-1.5"
+            >
+              Migrate {legacyJadwalCount} Legacy IDs
+            </button>
+          )}
+
+          {/* View Toggle */}
+          <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+            <button 
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              title="List View"
+            >
+              <ListIcon className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">List</span>
+            </button>
+            <button 
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'calendar' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              title="Calendar View"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Calendar</span>
+            </button>
           </div>
         </div>
-
-        {legacyJadwalCount > 0 && (
-          <button 
-            onClick={fixLegacyIds}
-            className="px-3 py-1.5 text-xs border border-orange-500/30 text-orange-600 bg-orange-500/10 rounded-md hover:bg-orange-500/20 transition-colors font-medium flex items-center gap-1.5"
-          >
-            Migrate {legacyJadwalCount} Legacy IDs
-          </button>
-        )}
-        </div>
-
       </div>
 
       <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-sm flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto overflow-x-auto min-w-0 pb-10">
-          <table className="w-full text-left border-collapse table-fixed select-none">
+        {viewMode === 'list' ? (
+          <>
+            <div className="flex-1 overflow-auto overflow-x-auto min-w-0 pb-10">
+              <table className="w-full text-left border-collapse table-fixed select-none">
             <thead className="bg-[var(--bg-surface)] sticky top-0 z-10 shadow-[0_1px_0_var(--border-color)]">
               <tr>
                 <th 
@@ -724,6 +958,10 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
               </button>
             </div>
           </div>
+        )}
+        </>
+        ) : (
+          renderCalendarView()
         )}
       </div>
 

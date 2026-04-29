@@ -68,9 +68,10 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal, DataListKlaim } from './types';
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
+import DataListKlaimView, { DataListKlaimViewRef } from './components/DataListKlaimView';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
@@ -1009,6 +1010,7 @@ export default function App() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [dataLinks, setDataLinks] = useState<DataListLink[]>([]);
   const [dataJadwal, setDataJadwal] = useState<DataListJadwal[]>([]);
+  const [dataKlaim, setDataKlaim] = useState<DataListKlaim[]>([]);
   const [metadataOptions, setMetadataOptions] = useState({
     categories: [] as string[],
     brands: [] as string[],
@@ -1019,7 +1021,10 @@ export default function App() {
     category_jadwal: [] as string[],
     wh_code_jadwal: [] as string[],
     wh_name_jadwal: [] as string[],
-    wh_partner_jadwal: [] as string[]
+    wh_partner_jadwal: [] as string[],
+    claim_type_klaim: [] as string[],
+    whp_name_klaim: [] as string[],
+    subsidiary_klaim: [] as string[]
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isDeletingAttachment, setIsDeletingAttachment] = useState<string | number | null>(null);
@@ -1284,6 +1289,7 @@ export default function App() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const dataListLinkRef = React.useRef<DataListLinkViewRef>(null);
   const dataListJadwalRef = React.useRef<DataListJadwalViewRef>(null);
+  const dataListKlaimRef = React.useRef<DataListKlaimViewRef>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1463,6 +1469,11 @@ export default function App() {
     dataLinksRef.current = dataLinks;
   }, [dataLinks]);
 
+  const dataJadwalRef = useRef(dataJadwal);
+  useEffect(() => {
+    dataJadwalRef.current = dataJadwal;
+  }, [dataJadwal]);
+
   useEffect(() => {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
@@ -1470,22 +1481,35 @@ export default function App() {
     const intervalId = setInterval(async () => {
        try {
          console.log('Running automatic backup...');
-         await apiFetch('/api/backup-to-sheets', {
+         await apiFetch('/api/gas-proxy', {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ 
+             action: 'backupToSheets',
              sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
              tasks: tasksRef.current
            })
          });
          
-         await apiFetch('/api/backup-links-to-sheets', {
+         await apiFetch('/api/gas-proxy', {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({ 
+             action: 'backupDataListLinksToSheets',
              sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
              sheetName: 'LINK',
              links: dataLinksRef.current
+           })
+         });
+
+         await apiFetch('/api/gas-proxy', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ 
+             action: 'backupDataListJadwalToSheets',
+             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+             sheetName: 'JADWAL',
+             jadwal: dataJadwalRef.current
            })
          });
        } catch (err) {
@@ -1687,7 +1711,10 @@ export default function App() {
           category_jadwal: data.category_jadwal || [],
           wh_code_jadwal: data.wh_code_jadwal || [],
           wh_name_jadwal: data.wh_name_jadwal || [],
-          wh_partner_jadwal: data.wh_partner_jadwal || []
+          wh_partner_jadwal: data.wh_partner_jadwal || [],
+          claim_type_klaim: data.claim_type_klaim || [],
+          whp_name_klaim: data.whp_name_klaim || [],
+          subsidiary_klaim: data.subsidiary_klaim || []
         });
       }
     });
@@ -1706,11 +1733,17 @@ export default function App() {
       setDataJadwal(jadwal);
     });
 
+    const unsubscribeDataKlaim = onSnapshot(collection(db, 'data_list_klaim'), (snapshot) => {
+      const klaimList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DataListKlaim[];
+      setDataKlaim(klaimList);
+    });
+
     return () => {
       unsubscribeMeta();
       unsubscribeTemplates();
       unsubscribeDataLinks();
       unsubscribeDataJadwal();
+      unsubscribeDataKlaim();
     };
   }, [currentUser]);
 
@@ -2692,6 +2725,15 @@ export default function App() {
                     <span className="hidden sm:inline">Add Jadwal</span>
                   </button>
                 )}
+                {currentView === 'data-list-klaim' && (
+                  <button 
+                    onClick={() => dataListKlaimRef.current?.openAddModal()}
+                    className="btn-primary px-3 py-2 md:px-4 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ml-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Add Klaim</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2916,20 +2958,22 @@ export default function App() {
                             setIsToolsMenuOpen(false);
                             const toastId = toast.loading('Backing up data to Google Sheets...');
                             try {
-                              const res = await apiFetch('/api/backup-to-sheets', {
+                              const res = await apiFetch('/api/gas-proxy', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ 
+                                  action: 'backupToSheets',
                                   sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
                                   tasks: tasks // directly passing front-end state 
                                 })
                               });
                               if (!res.ok) throw new Error('Task backup failed');
                               
-                              const linksRes = await apiFetch('/api/backup-links-to-sheets', {
+                              const linksRes = await apiFetch('/api/gas-proxy', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ 
+                                  action: 'backupDataListLinksToSheets',
                                   sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
                                   sheetName: 'LINK',
                                   links: dataLinks // directly passing front-end state
@@ -2937,6 +2981,18 @@ export default function App() {
                               });
                               if (!linksRes.ok) throw new Error('Links backup failed');
                               
+                              const jadwalRes = await apiFetch('/api/gas-proxy', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                  action: 'backupDataListJadwalToSheets',
+                                  sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+                                  sheetName: 'JADWAL',
+                                  jadwal: dataJadwal // directly passing front-end state
+                                })
+                              });
+                              if (!jadwalRes.ok) throw new Error('Jadwal backup failed');
+
                               toast.success('Backup to Google Sheets completed successfully!', { id: toastId });
                             } catch (error) {
                               console.error(error);
@@ -3065,6 +3121,15 @@ export default function App() {
             ref={dataListJadwalRef}
             dataJadwal={dataJadwal}
             searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery('')}
+            metadataOptions={metadataOptions}
+          />
+        ) : currentView === 'data-list-klaim' ? (
+          <DataListKlaimView
+            ref={dataListKlaimRef}
+            dataKlaim={dataKlaim}
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery('')}
             metadataOptions={metadataOptions}
           />
         ) : currentView.startsWith('data-list-') ? (

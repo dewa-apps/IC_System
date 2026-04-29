@@ -52,6 +52,20 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50);
+  
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  const handleStatusChange = async (id: string, field: 'status_btb_wh' | 'status_btb_brand', value: string) => {
+    setUpdatingStatusId(`${id}-${field}`);
+    try {
+      await updateDoc(doc(db, 'data_list_jadwal', id), { [field]: value });
+      toast.success('Status updated successfully');
+    } catch (error: any) {
+      toast.error('Failed to update status: ' + error.message);
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
 
   // Resizing
   const [colWidths, setColWidths] = useState<{ [key: string]: number }>({
@@ -621,15 +635,39 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     <td className="px-4 py-3 text-sm truncate text-[var(--text-secondary)]">{jadwal.category}</td>
                     <td className="px-4 py-3 text-sm truncate text-[var(--text-primary)] font-medium">{jadwal.wh_code}</td>
                     <td className="px-4 py-3 text-sm truncate text-[var(--text-secondary)]" title={jadwal.wh_name}>{jadwal.wh_name}</td>
-                    <td className="px-4 py-3 text-sm truncate">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getStatusBadgeClass(jadwal.status_btb_wh)}`}>
-                        {jadwal.status_btb_wh}
-                      </span>
+                    <td className="px-4 py-3 text-sm truncate" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative inline-block w-full max-w-[120px]">
+                        <select 
+                          value={jadwal.status_btb_wh}
+                          onChange={(e) => handleStatusChange(jadwal.id, 'status_btb_wh', e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={updatingStatusId === `${jadwal.id}-status_btb_wh`}
+                          className={`w-full appearance-none px-2 py-0.5 rounded text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all ${getStatusBadgeClass(jadwal.status_btb_wh)} ${updatingStatusId === `${jadwal.id}-status_btb_wh` ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <option value="None" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">None</option>
+                          <option value="Open" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Open</option>
+                          <option value="In Progress" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">In Progress</option>
+                          <option value="Done" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Done</option>
+                        </select>
+                        <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-sm truncate">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getStatusBadgeClass(jadwal.status_btb_brand)}`}>
-                        {jadwal.status_btb_brand}
-                      </span>
+                    <td className="px-4 py-3 text-sm truncate" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative inline-block w-full max-w-[120px]">
+                        <select 
+                          value={jadwal.status_btb_brand}
+                          onChange={(e) => handleStatusChange(jadwal.id, 'status_btb_brand', e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={updatingStatusId === `${jadwal.id}-status_btb_brand`}
+                          className={`w-full appearance-none px-2 py-0.5 rounded text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all ${getStatusBadgeClass(jadwal.status_btb_brand)} ${updatingStatusId === `${jadwal.id}-status_btb_brand` ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <option value="None" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">None</option>
+                          <option value="Open" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Open</option>
+                          <option value="In Progress" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">In Progress</option>
+                          <option value="Done" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Done</option>
+                        </select>
+                        <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                      </div>
                     </td>
                   </tr>
                 ))

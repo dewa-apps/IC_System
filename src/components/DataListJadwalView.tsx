@@ -67,6 +67,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   const [resizingCol, setResizingCol] = useState<{ key: string, startX: number, startWidth: number } | null>(null);
   const isResizingRef = React.useRef(false);
 
+  const uniqueTypes = useMemo(() => Array.from(new Set([...metadataOptions.type_jadwal, ...dataJadwal.map(j => j.type).filter(Boolean)])).sort(), [metadataOptions.type_jadwal, dataJadwal]);
+  const uniqueCategories = useMemo(() => Array.from(new Set([...metadataOptions.category_jadwal, ...dataJadwal.map(j => j.category).filter(Boolean)])).sort(), [metadataOptions.category_jadwal, dataJadwal]);
+  const uniqueWHCodes = useMemo(() => Array.from(new Set([...metadataOptions.wh_code_jadwal, ...dataJadwal.map(j => j.wh_code).filter(Boolean)])).sort(), [metadataOptions.wh_code_jadwal, dataJadwal]);
+  const uniqueWHNames = useMemo(() => Array.from(new Set([...metadataOptions.wh_name_jadwal, ...dataJadwal.map(j => j.wh_name).filter(Boolean)])).sort(), [metadataOptions.wh_name_jadwal, dataJadwal]);
+  const uniqueWHPartners = useMemo(() => Array.from(new Set([...metadataOptions.wh_partner_jadwal, ...dataJadwal.map(j => j.wh_partner).filter(Boolean)])).sort(), [metadataOptions.wh_partner_jadwal, dataJadwal]);
+
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJadwal, setEditingJadwal] = useState<DataListJadwal | null>(null);
@@ -248,23 +254,19 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
         await updateDoc(doc(db, 'data_list_jadwal', editingJadwal.id), saveData);
         toast.success('Jadwal updated successfully');
       } else {
-        let newDisplayId = '';
-        const now = new Date();
-        const year = now.getFullYear().toString().slice(-2);
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const codePrefix = `J-${year}${month}-`;
-        
-        // Find highest sequence for this month
-        const thisMonthJadwal = dataJadwal.filter(j => j.display_id?.startsWith(codePrefix));
+        const codePrefix = `J-`;
         let maxSeq = 0;
-        thisMonthJadwal.forEach(j => {
-          const match = j.display_id?.match(/-(\d+)$/);
-          if (match && parseInt(match[1]) > maxSeq) {
-            maxSeq = parseInt(match[1]);
+        dataJadwal.forEach(j => {
+          if (j.display_id && j.display_id.match(/^J-\d{4,}$/)) {
+            const match = j.display_id.substring(codePrefix.length);
+            const num = parseInt(match, 10);
+            if (!isNaN(num) && num > maxSeq) {
+              maxSeq = num;
+            }
           }
         });
         
-        newDisplayId = `${codePrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+        let newDisplayId = `${codePrefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
         await addDoc(dbRef, {
           ...saveData,
@@ -365,74 +367,149 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
 
   const activeFiltersCount = selectedTypes.length + selectedCategories.length + selectedWHPartners.length;
 
+  const legacyJadwalCount = dataJadwal.filter(j => j.display_id && j.display_id.match(/^J-\d{4}-\d+$/)).length;
+
+  const fixLegacyIds = async () => {
+    if (!confirm('This will update all old format J-YYMM-XXXX IDs to J-XXXX. Continue?')) return;
+    
+    // sort by existing display_id to preserve the sequence flow chronologically
+    const sorted = [...dataJadwal].sort((a, b) => {
+      return (a.display_id || '').localeCompare(b.display_id || '');
+    });
+    
+    let seq = 1;
+    let updated = 0;
+    try {
+      for (const j of sorted) {
+        const newId = `J-${String(seq).padStart(4, '0')}`;
+        if (j.display_id !== newId) {
+          await updateDoc(doc(db, 'data_list_jadwal', j.id), { display_id: newId });
+          updated++;
+        }
+        seq++;
+      }
+      toast.success(`Successfully updated ${updated} Jadwal IDs`);
+    } catch (e: any) {
+      toast.error('Error updating IDs: ' + e.message);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
+      <div className="mb-4 flex items-center justify-between gap-4">
         
-        {/* Filter Dropdown */}
-        <div className="relative group/main z-20">
-          <button className="flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]">
-            <Filter className="w-4 h-4 text-[var(--text-muted)]" />
-            <span>Filters</span>
-            {activeFiltersCount > 0 && (
-              <span className="ml-1 bg-[var(--accent-color)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {activeFiltersCount}
-              </span>
-            )}
-            <ChevronDown className="w-4 h-4 text-[var(--text-muted)] ml-1" />
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Filter Dropdown */}
+          <div className="relative group/main z-20">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+              <Filter className="w-3.5 h-3.5" />
+              Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+            </button>
           
-          <div className="absolute top-full left-0 mt-1 w-64 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all pointer-events-none group-hover/main:pointer-events-auto divide-y divide-[var(--border-color)]">
+          <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-40 py-2">
             
-            {/* Type Filter */}
-            <div className="p-2">
-              <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">Type</div>
-              {metadataOptions.type_jadwal.map(t => (
-                <label key={`ft-${t}`} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--bg-secondary)] rounded cursor-pointer">
-                  <input type="checkbox" checked={selectedTypes.includes(t)} onChange={() => toggleArrayItem(setSelectedTypes, t)} className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)]" />
-                  <span className="text-sm text-[var(--text-primary)]">{t}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Category Filter */}
-            <div className="p-2">
-              <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">Category</div>
-              {metadataOptions.category_jadwal.map(c => (
-                <label key={`fc-${c}`} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--bg-secondary)] rounded cursor-pointer">
-                  <input type="checkbox" checked={selectedCategories.includes(c)} onChange={() => toggleArrayItem(setSelectedCategories, c)} className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)]" />
-                  <span className="text-sm text-[var(--text-primary)]">{c}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* WH Partner Filter */}
-            <div className="p-2">
-              <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2">WH Partner</div>
-              {metadataOptions.wh_partner_jadwal.map(wp => (
-                <label key={`fw-${wp}`} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--bg-secondary)] rounded cursor-pointer">
-                  <input type="checkbox" checked={selectedWHPartners.includes(wp)} onChange={() => toggleArrayItem(setSelectedWHPartners, wp)} className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)]" />
-                  <span className="text-sm text-[var(--text-primary)]">{wp}</span>
-                </label>
-              ))}
-            </div>
-
-            {activeFiltersCount > 0 && (
-              <div className="p-2">
-                <button 
-                  onClick={() => {
-                    setSelectedTypes([]);
-                    setSelectedCategories([]);
-                    setSelectedWHPartners([]);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded"
-                >
-                  Clear All
-                </button>
+            {/* Type Submenu */}
+            {uniqueTypes.length > 0 && (
+              <div className="relative group/type px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                <span className="font-medium">Type {selectedTypes.length > 0 && `(${selectedTypes.length})`}</span>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/type:text-[var(--text-primary)]" />
+                
+                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/type:opacity-100 group-hover/type:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1">
+                    {uniqueTypes.map(t => (
+                      <label key={`ft-${t}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedTypes.includes(t)}
+                          onChange={() => toggleArrayItem(setSelectedTypes, t)} 
+                          className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">{t}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
+
+            {/* Category Submenu */}
+            {uniqueCategories.length > 0 && (
+              <div className="relative group/category px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                <span className="font-medium">Category {selectedCategories.length > 0 && `(${selectedCategories.length})`}</span>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/category:text-[var(--text-primary)]" />
+                
+                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/category:opacity-100 group-hover/category:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1">
+                    {uniqueCategories.map(c => (
+                      <label key={`fc-${c}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedCategories.includes(c)}
+                          onChange={() => toggleArrayItem(setSelectedCategories, c)} 
+                          className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">{c}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* WH Partner Submenu */}
+            {uniqueWHPartners.length > 0 && (
+              <div className="relative group/whpartner px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                <span className="font-medium">WH Partner {selectedWHPartners.length > 0 && `(${selectedWHPartners.length})`}</span>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/whpartner:text-[var(--text-primary)]" />
+                
+                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/whpartner:opacity-100 group-hover/whpartner:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1">
+                    {uniqueWHPartners.map(wp => (
+                      <label key={`fw-${wp}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedWHPartners.includes(wp)}
+                          onChange={() => toggleArrayItem(setSelectedWHPartners, wp)} 
+                          className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">{wp}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeFiltersCount > 0 && (
+              <>
+                <div className="h-px bg-[var(--border-color)] my-1" />
+                <div className="px-2">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedTypes([]);
+                      setSelectedCategories([]);
+                      setSelectedWHPartners([]);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full py-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded"
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
+              </>
+            )}
           </div>
+        </div>
+
+        {legacyJadwalCount > 0 && (
+          <button 
+            onClick={fixLegacyIds}
+            className="px-3 py-1.5 text-xs border border-orange-500/30 text-orange-600 bg-orange-500/10 rounded-md hover:bg-orange-500/20 transition-colors font-medium flex items-center gap-1.5"
+          >
+            Migrate {legacyJadwalCount} Legacy IDs
+          </button>
+        )}
         </div>
 
       </div>
@@ -613,13 +690,49 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-start pt-10 overflow-y-auto">
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col mb-10">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] shrink-0">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 text-[var(--text-primary)]" onClick={() => !isSaving && !isDeleting && setIsModalOpen(false)}>
+          <div 
+            className="bg-[var(--bg-surface)] w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-[var(--border-color)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-primary)]">
               <h2 className="text-lg font-bold">{editingJadwal ? 'Edit Jadwal' : 'Add New Jadwal'} {editingJadwal && <span className="text-sm font-normal text-[var(--text-muted)] ml-2">{editingJadwal.display_id}</span>}</h2>
-              <button onClick={closeModal} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {editingJadwal && (
+                  <>
+                    {!showDeleteConfirm ? (
+                       <button 
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-1.5 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                        title="Delete Jadwal"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 mr-2">
+                        <span className="text-sm font-medium text-red-500">Delete jadwal?</span>
+                        <button 
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                        >
+                          Yes
+                        </button>
+                        <button 
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={isDeleting}
+                          className="px-2 py-1 text-xs border border-[var(--border-color)] rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50 text-[var(--text-primary)]"
+                        >
+                          No
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <button onClick={() => !isSaving && !isDeleting && closeModal()} className="p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] rounded transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             
             <div className="p-6 overflow-y-auto min-h-0">
@@ -646,7 +759,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
                   />
                   <datalist id="type_jadwal_list">
-                    {metadataOptions.type_jadwal.map(t => <option key={t} value={t} />)}
+                    {uniqueTypes.map(t => <option key={t} value={t} />)}
                   </datalist>
                 </div>
 
@@ -661,7 +774,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
                   />
                   <datalist id="category_jadwal_list">
-                    {metadataOptions.category_jadwal.map(c => <option key={c} value={c} />)}
+                    {uniqueCategories.map(c => <option key={c} value={c} />)}
                   </datalist>
                 </div>
 
@@ -676,7 +789,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all uppercase"
                   />
                   <datalist id="wh_code_jadwal_list">
-                    {metadataOptions.wh_code_jadwal.map(c => <option key={c} value={c} />)}
+                    {uniqueWHCodes.map(c => <option key={c} value={c} />)}
                   </datalist>
                 </div>
 
@@ -691,7 +804,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
                   />
                   <datalist id="wh_name_jadwal_list">
-                    {metadataOptions.wh_name_jadwal.map(n => <option key={n} value={n} />)}
+                    {uniqueWHNames.map(n => <option key={n} value={n} />)}
                   </datalist>
                 </div>
 
@@ -706,13 +819,13 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
                   />
                   <datalist id="wh_partner_jadwal_list">
-                    {metadataOptions.wh_partner_jadwal.map(p => <option key={p} value={p} />)}
+                    {uniqueWHPartners.map(p => <option key={p} value={p} />)}
                   </datalist>
                 </div>
 
                 <div className="md:col-span-2 border-t border-[var(--border-color)] my-2 pt-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="text-sm font-bold text-[var(--text-primary)]">Status BtB WH</div>
+                    <div className="text-sm font-bold text-[var(--text-primary)]">Status BtB WHP</div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -727,6 +840,16 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                         <option value="In Progress">In Progress</option>
                         <option value="Done">Done</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Subject Email WHP</label>
+                      <input 
+                        type="text"
+                        value={formData.subject_email}
+                        onChange={(e) => setFormData({...formData, subject_email: e.target.value})}
+                        placeholder="General Email Subject..."
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
+                      />
                     </div>
                   </div>
                 </div>
@@ -763,17 +886,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                 </div>
 
                 <div className="md:col-span-2 border-t border-[var(--border-color)] my-2 pt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Subject Email (Optional)</label>
-                      <input 
-                        type="text"
-                        value={formData.subject_email}
-                        onChange={(e) => setFormData({...formData, subject_email: e.target.value})}
-                        placeholder="General Email Subject..."
-                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Remark</label>
                       <textarea 
@@ -787,27 +900,6 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                 </div>
 
               </div>
-              
-              {editingJadwal && (
-                <div className="mt-8 border border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 rounded p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div>
-                    <h4 className="text-sm font-bold text-red-600 dark:text-red-400">Danger Zone</h4>
-                    <p className="text-xs text-red-500 dark:text-red-300 mt-1">Once you delete this item, there is no going back. Please be certain.</p>
-                  </div>
-                  {showDeleteConfirm ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setShowDeleteConfirm(false)} className="px-3 py-1.5 text-sm border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors">Cancel</button>
-                      <button onClick={handleDelete} disabled={isDeleting} className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50">
-                        {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setShowDeleteConfirm(true)} className="px-3 py-1.5 text-sm border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors flex items-center gap-1.5">
-                      <Trash2 className="w-4 h-4" /> Delete Jadwal
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="px-6 py-4 border-t border-[var(--border-color)] bg-[var(--bg-secondary)] flex justify-end gap-2 shrink-0 rounded-b-lg">

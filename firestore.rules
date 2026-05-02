@@ -164,7 +164,7 @@ service cloud.firestore {
       allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
-    
+
     match /data_list_klaim/{klaimId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();

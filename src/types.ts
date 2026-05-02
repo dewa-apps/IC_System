@@ -94,6 +94,18 @@ export interface DataListJadwal {
   updated_at?: any;
 }
 
+export interface DataListLink {
+  id: string;
+  display_id?: number | string; // Optionally we can use a sequence or just use document ID
+  category: string;
+  link_name: string;
+  link_url: string;
+  description: string;
+  note: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DataListKlaim {
   id: string;
   display_id?: string;
@@ -113,18 +125,6 @@ export interface DataListKlaim {
   remark: string;
   created_at?: any;
   updated_at?: any;
-}
-
-export interface DataListLink {
-  id: string;
-  display_id?: number | string; // Optionally we can use a sequence or just use document ID
-  category: string;
-  link_name: string;
-  link_url: string;
-  description: string;
-  note: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 export type TaskStatus = Task['status'];

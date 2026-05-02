@@ -191,60 +191,85 @@ function doPost(e) {
     }
     
     // Jika request adalah untuk upload file klaim
-    if (data.action === 'uploadKlaim') {
-      var fileData = data.base64;
+    if (data.action === 'uploadFileKlaim') {
+      var fileData = data.base64; 
       var fileName = data.fileName;
       var mimeType = data.mimeType;
       
-      var rootFolder = DriveApp.getFolderById("1qlEw1DgqtbJ5AR_i0IdAf1AgyxPT6nxY");
+      var invoiceDate = data.invoiceDate || new Date().toISOString(); 
+      var whpName = data.whpName || "UnknownWH";
+      var klaimId = data.klaimId || "UnknownID";
       
-      var yearStr = data.invoiceDate ? data.invoiceDate.substring(0,4) : new Date().getFullYear().toString();
-      var yearFolders = rootFolder.getFoldersByName(yearStr);
-      var yearFolder = yearFolders.hasNext() ? yearFolders.next() : rootFolder.createFolder(yearStr);
-
-      var whpStr = data.whpName || "Unknown WHP";
-      var whpFolders = yearFolder.getFoldersByName(whpStr);
-      var whpFolder = whpFolders.hasNext() ? whpFolders.next() : yearFolder.createFolder(whpStr);
-
-      var idStr = data.klaimId || "Unknown ID";
-      var idFolders = whpFolder.getFoldersByName(idStr);
-      var idFolder = idFolders.hasNext() ? idFolders.next() : whpFolder.createFolder(idStr);
-
+      var year = invoiceDate.substring(0, 4);
+      
+      var rootFolderId = "1qlEw1DgqtbJ5AR_i0IdAf1AgyxPT6nxY"; 
+      var rootFolder = DriveApp.getFolderById(rootFolderId);
+      
+      var yearFolders = rootFolder.getFoldersByName(year);
+      var yearFolder;
+      if (yearFolders.hasNext()) {
+        yearFolder = yearFolders.next();
+      } else {
+        yearFolder = rootFolder.createFolder(year);
+      }
+      
+      var whpFolders = yearFolder.getFoldersByName(whpName);
+      var whpFolder;
+      if (whpFolders.hasNext()) {
+        whpFolder = whpFolders.next();
+      } else {
+        whpFolder = yearFolder.createFolder(whpName);
+      }
+      
+      var idFolders = whpFolder.getFoldersByName(klaimId);
+      var idFolder;
+      if (idFolders.hasNext()) {
+        idFolder = idFolders.next();
+      } else {
+        idFolder = whpFolder.createFolder(klaimId);
+      }
+      
       var decodedData = Utilities.base64Decode(fileData);
       var blob = Utilities.newBlob(decodedData, mimeType, fileName);
-
+      
       var file = idFolder.createFile(blob);
-
+      
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
         fileUrl: file.getUrl(),
         fileId: file.getId(),
-        folderUrl: idFolder.getUrl(),
-        folderId: idFolder.getId()
+        folderUrl: idFolder.getUrl()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Jika request adalah untuk upload file
+    if (data.action === 'uploadFile' || data.base64) {
+      var fileData = data.base64; 
+      var fileName = data.fileName;
+      var mimeType = data.mimeType;
+      
+      // MASUKKAN ID FOLDER SHARED DRIVE ANDA DI SINI
+      var folderId = "1AO6iPo28KjgKk1SKTwsMLVb1jr8_kMrM"; 
+      
+      // Decode file dan buat blob
+      var decodedData = Utilities.base64Decode(fileData);
+      var blob = Utilities.newBlob(decodedData, mimeType, fileName);
+      
+      // Simpan ke Shared Drive
+      var folder = DriveApp.getFolderById(folderId);
+      var file = folder.createFile(blob);
+      
+      // Return URL file ke aplikasi
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        fileUrl: file.getUrl(),
+        fileId: file.getId()
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // Jika request adalah untuk upload file
-    var fileData = data.base64; 
-    var fileName = data.fileName;
-    var mimeType = data.mimeType;
-    
-    // MASUKKAN ID FOLDER SHARED DRIVE ANDA DI SINI
-    var folderId = "1AO6iPo28KjgKk1SKTwsMLVb1jr8_kMrM"; 
-    
-    // Decode file dan buat blob
-    var decodedData = Utilities.base64Decode(fileData);
-    var blob = Utilities.newBlob(decodedData, mimeType, fileName);
-    
-    // Simpan ke Shared Drive
-    var folder = DriveApp.getFolderById(folderId);
-    var file = folder.createFile(blob);
-    
-    // Return URL file ke aplikasi
     return ContentService.createTextOutput(JSON.stringify({
-      status: 'success',
-      fileUrl: file.getUrl(),
-      fileId: file.getId()
+      status: 'error',
+      message: 'Unknown action'
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {

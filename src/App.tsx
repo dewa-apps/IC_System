@@ -68,7 +68,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal, DataListKlaim } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal } from './types';
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
 import DataListKlaimView, { DataListKlaimViewRef } from './components/DataListKlaimView';
@@ -1022,9 +1022,10 @@ export default function App() {
     wh_code_jadwal: [] as string[],
     wh_name_jadwal: [] as string[],
     wh_partner_jadwal: [] as string[],
-    claim_type_klaim: [] as string[],
-    whp_name_klaim: [] as string[],
-    subsidiary_klaim: [] as string[]
+    claim_type: [] as string[],
+    wh_name_klaim: [] as string[],
+    partner_klaim: [] as string[],
+    subsidiary: [] as string[]
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isDeletingAttachment, setIsDeletingAttachment] = useState<string | number | null>(null);
@@ -1712,9 +1713,10 @@ export default function App() {
           wh_code_jadwal: data.wh_code_jadwal || [],
           wh_name_jadwal: data.wh_name_jadwal || [],
           wh_partner_jadwal: data.wh_partner_jadwal || [],
-          claim_type_klaim: data.claim_type_klaim || [],
-          whp_name_klaim: data.whp_name_klaim || [],
-          subsidiary_klaim: data.subsidiary_klaim || []
+          claim_type: data.claim_type || [],
+          wh_name_klaim: data.wh_name_klaim || [],
+          partner_klaim: data.partner_klaim || [],
+          subsidiary: data.subsidiary || []
         });
       }
     });
@@ -1734,8 +1736,8 @@ export default function App() {
     });
 
     const unsubscribeDataKlaim = onSnapshot(collection(db, 'data_list_klaim'), (snapshot) => {
-      const klaimList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DataListKlaim[];
-      setDataKlaim(klaimList);
+      const klaim = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DataListKlaim[];
+      setDataKlaim(klaim);
     });
 
     return () => {

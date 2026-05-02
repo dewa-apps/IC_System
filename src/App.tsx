@@ -2582,12 +2582,12 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
-              {['tasks', 'data-list-link', 'data-list-jadwal'].includes(currentView) && (
+              {['tasks', 'data-list-link', 'data-list-jadwal', 'data-list-klaim'].includes(currentView) && (
                 <div className="relative hidden md:block max-w-md w-full ml-4">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
                   <input 
                     type="text" 
-                    placeholder={currentView === 'data-list-jadwal' ? 'Search jadwal...' : currentView === 'data-list-link' ? 'Search links...' : 'Search tasks...'}
+                    placeholder={currentView === 'data-list-jadwal' ? 'Search jadwal...' : currentView === 'data-list-link' ? 'Search links...' : currentView === 'data-list-klaim' ? 'Search klaim...' : 'Search tasks...'}
                     className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}

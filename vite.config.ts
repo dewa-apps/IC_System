@@ -28,6 +28,9 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         injectRegister: 'auto',
         includeAssets: ['pwa-icon.svg'],
+        workbox: {
+          maximumFileSizeToCacheInBytes: 3000000 // 3MB to allow for the larger index-XXX.js
+        },
         manifest: {
           name: 'IC Task Manager',
           short_name: 'IC Tasks',

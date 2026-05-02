@@ -1,7 +1,7 @@
 import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { DataListKlaim } from '../types';
+import { DataListKlaim, Attachment, ActivityLog } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
@@ -65,10 +65,27 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
-  const handleStatusChange = async (id: string, value: string) => {
+  const logActivity = async (klaimId: string, action: string, details: string) => {
+    const user = auth.currentUser;
+    const userName = user?.displayName || user?.email || 'Unknown User';
+    try {
+      await addDoc(collection(db, 'activity_log'), {
+        task_id: klaimId,
+        user: userName,
+        action,
+        details,
+        created_at: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Failed to log activity", e);
+    }
+  };
+
+  const handleStatusChange = async (id: string, value: string, oldStatus?: string) => {
     setUpdatingStatusId(id);
     try {
       await updateDoc(doc(db, 'data_list_klaim', id), { status: value });
+      await logActivity(id, "Updated Klaim", `Status changed from '${oldStatus || 'None'}' to '${value}'`);
       toast.success('Status updated successfully');
     } catch (error: any) {
       toast.error('Failed to update status: ' + error.message);
@@ -237,7 +254,13 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [editingItem, setEditingItem] = useState<DataListKlaim | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [isDeletingAttachment, setIsDeletingAttachment] = useState<number | string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<DataListKlaim>>({
     claim_type: '',
@@ -255,14 +278,102 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     remark: ''
   });
 
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const fetchAttachments = async (id: string) => {
+    try {
+      const res = await apiFetch(`/api/klaim/${id}/attachments`);
+      if (res.ok) {
+        setAttachments(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch attachments", err);
+    }
+  };
+
+  const fetchActivities = async (id: string) => {
+    try {
+      const res = await apiFetch(`/api/klaim/${id}/activities`);
+      if (res.ok) {
+        setActivities(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch activities", err);
+    }
+  };
+
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const newFiles = Array.from(files);
+
+    if (!editingItem) {
+      setPendingFiles(prev => [...prev, ...newFiles]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    let uploadedCount = 0;
+    let latestFolderUrl: string | undefined = undefined;
+    try {
+      for (const file of newFiles) {
+        const payloadData = new FormData();
+        payloadData.append('file', file);
+        if (formData.invoice_date) {
+            payloadData.append('invoice_date', formData.invoice_date);
+        }
+        if (formData.whp_name) {
+            payloadData.append('whp_name', formData.whp_name);
+        }
+        const res = await apiFetch(`/api/klaim/${editingItem.id}/attachments`, {
+          method: 'POST',
+          body: payloadData
+        });
+        if (!res.ok) throw new Error('Upload failed');
+        const data = await res.json();
+        if (data.folder_url) latestFolderUrl = data.folder_url;
+        uploadedCount++;
+      }
+    } catch (err) {
+      console.error("Upload error", err);
+      toast.error('Failed to upload one or more files');
+    } finally {
+      if (uploadedCount > 0) {
+        toast.success(`Successfully uploaded ${uploadedCount} file(s)`);
+        fetchAttachments(editingItem.id);
+        fetchActivities(editingItem.id);
+        if (latestFolderUrl) {
+          setFormData(prev => ({ ...prev, link_data: latestFolderUrl }));
+        }
+      }
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteAttachment = async (id: string | number) => {
+    setIsDeletingAttachment(id);
+    try {
+      const res = await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
+      if (res.ok && editingItem) {
+        fetchAttachments(editingItem.id);
+        fetchActivities(editingItem.id);
+        toast.success("Attachment deleted");
+      } else {
+        toast.error("Failed to delete attachment");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred while deleting attachment");
+    } finally {
+      setIsDeletingAttachment(null);
+    }
+  };
 
   useImperativeHandle(ref, () => ({
     openAddModal: () => {
       setEditingItem(null);
       setFormData({
         claim_type: '',
-        invoice_date: new Date().toISOString().split('T')[0],
+        invoice_date: '',
         invoice_no: '',
         description: '',
         subject_email: '',
@@ -296,6 +407,11 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       status: item.status || 'Open',
       remark: item.remark || ''
     });
+    setAttachments([]);
+    setActivities([]);
+    fetchAttachments(item.id);
+    fetchActivities(item.id);
+    setPendingFiles([]);
     setIsModalOpen(true);
   };
 
@@ -319,11 +435,16 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this klaim data?")) return;
     setIsDeleting(id);
     try {
+      const targetItem = dataKlaim.find(d => d.id === id);
       await deleteDoc(doc(db, 'data_list_klaim', id));
+      if (targetItem) {
+        await logActivity(id, "Deleted Klaim", `Deleted Klaim ${targetItem.display_id || targetItem.invoice_no}`);
+      }
       toast.success("Deleted successfully");
+      setIsModalOpen(false);
+      setShowDeleteConfirm(false);
     } catch (err: any) {
       toast.error('Failed to delete: ' + err.message);
     } finally {
@@ -344,6 +465,18 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
       if (editingItem) {
         await updateDoc(doc(db, 'data_list_klaim', editingItem.id), finalData);
+        // Find changes
+        const changes: string[] = [];
+        if (editingItem.claim_type !== formData.claim_type) changes.push(`Claim Type: ${editingItem.claim_type} -> ${formData.claim_type}`);
+        if (editingItem.invoice_no !== formData.invoice_no) changes.push(`Invoice No: ${editingItem.invoice_no} -> ${formData.invoice_no}`);
+        if (editingItem.invoice_date !== formData.invoice_date) changes.push(`Invoice Date: ${editingItem.invoice_date} -> ${formData.invoice_date}`);
+        if (editingItem.claim_value !== formData.claim_value) changes.push(`Claim Value: ${editingItem.claim_value} -> ${formData.claim_value}`);
+        if (editingItem.tax !== formData.tax) changes.push(`Tax: ${editingItem.tax} -> ${formData.tax}`);
+        if (editingItem.status !== formData.status) changes.push(`Status: ${editingItem.status} -> ${formData.status}`);
+
+        const detailsStr = changes.length > 0 ? changes.join('\n') : "Klaim details updated";
+        await logActivity(editingItem.id, "Updated Klaim", detailsStr);
+        
         toast.success("Klaim updated");
       } else {
         // Find existing KL count
@@ -355,12 +488,31 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         });
         const nextIdStr = `KL-${String(maxId + 1).padStart(4, '0')}`;
         
-        await addDoc(collection(db, 'data_list_klaim'), {
+        const newRef = await addDoc(collection(db, 'data_list_klaim'), {
           ...finalData,
           display_id: nextIdStr,
           created_at: serverTimestamp()
         });
-        toast.success("New Klaim created");
+        
+        await logActivity(newRef.id, "Created Klaim", `Created Klaim ${nextIdStr}`);
+
+        // Handle offline file uploads
+        if (pendingFiles.length > 0) {
+          toast.success("Creating klaim and uploading files...");
+          let uploadedCount = 0;
+          for (const file of pendingFiles) {
+            const uploadData = new FormData();
+            uploadData.append('file', file);
+            const res = await apiFetch(`/api/klaim/${newRef.id}/attachments`, {
+              method: 'POST',
+              body: uploadData
+            });
+            if (res.ok) uploadedCount++;
+          }
+          if (uploadedCount > 0) toast.success(`Successfully uploaded ${uploadedCount} file(s)`);
+        } else {
+          toast.success("New Klaim created");
+        }
       }
       setIsModalOpen(false);
     } catch (err: any) {
@@ -369,68 +521,6 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       setIsSaving(false);
     }
   };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0 || !editingItem) return;
-    const file = e.target.files[0];
-    
-    if (!formData.invoice_date) {
-      toast.error("Please input Invoice Date first");
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        
-        const gasUrl = "/api/gas-proxy";
-        const gasResponse = await apiFetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'uploadFileKlaim',
-            fileName: file.name,
-            mimeType: file.type,
-            base64: base64Data,
-            invoiceDate: formData.invoice_date,
-            whpName: formData.whp_name,
-            klaimId: editingItem.display_id || editingItem.id
-          })
-        });
-
-        const gasResultText = await gasResponse.text();
-        if (!gasResponse.ok) {
-           throw new Error(gasResultText || "File upload proxy response not ok");
-        }
-        
-        const data = JSON.parse(gasResultText);
-        if (data.status === 'success') {
-          // Update the link data with the folder URL
-          setFormData(prev => ({ ...prev, link_data: data.folderUrl }));
-          // Also save immediately to Firestore
-          await updateDoc(doc(db, 'data_list_klaim', editingItem.id), { link_data: data.folderUrl });
-          toast.success("File uploaded to GDrive!");
-        } else {
-          throw new Error(data.message || 'Unknown error from GAS');
-        }
-        setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      };
-      reader.onerror = (error) => {
-        setIsUploading(false);
-        toast.error("Failed to read file");
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      };
-    } catch (error: any) {
-      setIsUploading(false);
-      toast.error('Upload failed: ' + error.message);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(val);
@@ -649,9 +739,6 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
             <table className="w-full text-left border-collapse table-fixed select-none">
               <thead className="bg-[var(--bg-surface)] sticky top-0 z-10 shadow-[0_1px_0_var(--border-color)]">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative" style={{ width: 60 }}>
-                    No
-                  </th>
                   {[
                     { key: 'display_id', label: 'ID' },
                     { key: 'claim_type', label: 'Claim Type' },
@@ -687,17 +774,16 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       />
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider" style={{ width: 120 }}>Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
                 {currentData.map((item, idx) => {
-                  const no = (currentPage - 1) * rowsPerPage + idx + 1;
                   return (
-                    <tr key={item.id} className="hover:bg-[var(--bg-secondary)] transition-colors group">
-                      <td className="px-4 py-2 text-center text-[var(--text-secondary)] text-xs sticky left-0 z-10">
-                        {no}
-                      </td>
+                    <tr 
+                      key={item.id} 
+                      className="hover:bg-[var(--bg-secondary)] transition-colors group cursor-pointer"
+                      onClick={() => openEditModal(item)}
+                    >
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-medium" style={{ maxWidth: colWidths.display_id }}>
                         {item.display_id || '-'}
                       </td>
@@ -722,7 +808,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-mono font-medium text-xs" style={{ maxWidth: colWidths.due }}>
                         {formatCurrency(item.due)}
                       </td>
-                      <td className="px-4 py-2 truncate" style={{ maxWidth: colWidths.status }}>
+                      <td className="px-4 py-2 truncate" style={{ maxWidth: colWidths.status }} onClick={(e) => e.stopPropagation()}>
                          {updatingStatusId === item.id ? (
                            <div className="flex items-center gap-2">
                              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-color)]" />
@@ -731,7 +817,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                          ) : (
                            <select
                               value={item.status}
-                              onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                              onChange={(e) => handleStatusChange(item.id, e.target.value, item.status)}
                               className={`text-xs font-semibold px-2 py-1 rounded-full border-0 focus:ring-2 focus:ring-[var(--border-focus)] appearance-none cursor-pointer ${getStatusBadgeClass(item.status)}`}
                            >
                              <option value="Open">Open</option>
@@ -740,36 +826,6 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                              <option value="Done">Done</option>
                            </select>
                          )}
-                      </td>
-                      <td className="px-4 py-2 sticky right-0 bg-[var(--bg-surface)] group-hover:bg-[var(--bg-secondary)] transition-colors">
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {item.link_data && (
-                            <a 
-                              href={item.link_data} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="p-1.5 text-[var(--text-secondary)] hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
-                              title="Open Folder"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          )}
-                          <button 
-                            onClick={() => openEditModal(item)}
-                            className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(item.id)}
-                            disabled={isDeleting === item.id}
-                            className="p-1.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
                       </td>
                     </tr>
                   )
@@ -781,46 +837,48 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         )}
         
         {/* Pagination */}
-        <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 shrink-0 mt-auto">
-          <div className="flex items-center gap-4 text-xs text-[var(--text-secondary)] font-medium">
-            <select
-              value={rowsPerPage}
-              onChange={(e) => {
-                setRowsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-transparent border-none focus:ring-0 cursor-pointer outline-none font-bold text-[var(--text-primary)]"
-            >
-              {[20, 50, 100, 200].map(v => (
-                <option className="bg-[var(--bg-body)] text-[var(--text-primary)] font-medium" key={v} value={v}>{v} rows</option>
-              ))}
-            </select>
-            <span>Showing {filteredData.length === 0 ? 0 : ((currentPage - 1) * rowsPerPage) + 1} to {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length} entries</span>
-          </div>
-          
-          {totalPages > 1 && (
-            <div className="flex items-center gap-1">
+        {filteredData.length > 0 && (
+          <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 shrink-0 mt-auto">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)]">Show</span>
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => {
+                    setRowsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+                >
+                  {[20, 50, 100, 200].map(v => (
+                    <option className="bg-[var(--bg-body)] text-[var(--text-primary)] font-medium" key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-[var(--text-muted)]">per page</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 text-xs"
+                className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
               >
                 <ChevronLeft className="w-4 h-4" />
-                <span className="hidden sm:inline text-xs">Prev</span>
               </button>
               
-              <div className="flex items-center gap-1 px-2">
+              <div className="flex items-center gap-1">
                 {getPageNumbers(currentPage, totalPages).map((p, i) => (
                   <button
-                    key={i}
+                    key={`${p}-${i}`}
                     onClick={() => typeof p === 'number' && setCurrentPage(p)}
                     disabled={p === '...'}
-                    className={`min-w-[28px] h-[28px] text-xs rounded-md flex items-center justify-center font-bold transition-colors ${
+                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${
                       p === currentPage
-                        ? 'bg-[var(--accent-color)] text-white shadow-sm'
+                        ? 'bg-[var(--accent-color)] text-white'
                         : p === '...'
                         ? 'text-[var(--text-muted)] cursor-default'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)] cursor-pointer'
                     }`}
                   >
                     {p}
@@ -831,14 +889,13 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
               <button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 text-xs"
+                className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
               >
-                <span className="hidden sm:inline text-xs">Next</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Form Modal */}
@@ -848,11 +905,44 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
               <h2 className="text-lg font-bold text-[var(--text-primary)]">
                 {editingItem ? 'Edit Klaim' : 'New Klaim'} 
-                {editingItem && ` - ${editingItem.display_id}`}
+                {editingItem && <span className="text-sm font-normal text-[var(--text-muted)] ml-2">{editingItem.display_id}</span>}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-[var(--text-secondary)] hover:text-red-500 transition-colors bg-[var(--bg-secondary)] hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-full">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {editingItem && (
+                  <>
+                    {!showDeleteConfirm ? (
+                       <button 
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-1.5 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                        title="Delete Klaim"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 mr-2">
+                        <span className="text-sm font-medium text-red-500">Delete klaim?</span>
+                        <button 
+                          onClick={() => handleDelete(editingItem.id)}
+                          disabled={!!isDeleting}
+                          className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                        >
+                          Yes
+                        </button>
+                        <button 
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={!!isDeleting}
+                          className="px-2 py-1 text-xs border border-[var(--border-color)] rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50 text-[var(--text-primary)]"
+                        >
+                          No
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <button onClick={() => !isSaving && !isDeleting && setIsModalOpen(false)} className="text-[var(--text-secondary)] hover:text-red-500 transition-colors bg-[var(--bg-secondary)] hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
@@ -872,13 +962,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                   </datalist>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">Invoice Date <span className="text-red-500">*</span></label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Invoice Date</label>
                   <input
                     type="date"
                     value={formData.invoice_date}
                     onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
                     className="input-field"
-                    required
                   />
                 </div>
               </div>
@@ -916,26 +1005,28 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
               <div className="grid grid-cols-2 gap-4 border-t border-[var(--border-color)] pt-5">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">WHP Name</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">WHP Name <span className="text-red-500">*</span></label>
                   <input
                     list="whpNameOptions"
                     value={formData.whp_name}
                     onChange={handleWHPChange}
                     className="input-field"
                     placeholder="Enter WHP name"
+                    required
                   />
                   <datalist id="whpNameOptions">
                     {uniqueWHPs.map(opt => <option key={opt} value={opt} />)}
                   </datalist>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">Partner</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Partner <span className="text-red-500">*</span></label>
                   <input
                     list="partnerOptions"
                     value={formData.partner}
                     onChange={(e) => setFormData({ ...formData, partner: e.target.value })}
                     className="input-field"
                     placeholder="Select or enter partner"
+                    required
                   />
                   <datalist id="partnerOptions">
                     {uniquePartners.map(opt => <option key={opt} value={opt} />)}
@@ -945,12 +1036,13 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">Subsidiary</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Subsidiary <span className="text-red-500">*</span></label>
                   <input
                     list="subsidiaryOptions"
                     value={formData.subsidiary}
                     onChange={(e) => setFormData({ ...formData, subsidiary: e.target.value })}
                     className="input-field"
+                    required
                   />
                   <datalist id="subsidiaryOptions">
                     {uniqueSubsidiaries.map(opt => <option key={opt} value={opt} />)}
@@ -1013,54 +1105,197 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5 pt-2 border-t border-[var(--border-color)] mt-2">
-                <label className="text-sm font-medium text-[var(--text-secondary)] flex justify-between">
-                  Link Data (Folder)
-                  {editingItem && formData.invoice_date && (
-                     <div className="flex items-center gap-2">
+              {editingItem && formData.invoice_date && (
+                <>
+                  <div className="flex flex-col gap-1.5 pt-2 border-t border-[var(--border-color)] mt-2">
+                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+                      Link Data (External Folder)
+                    </label>
+                    <div className="flex gap-2">
                        <input
+                         value={formData.link_data}
+                         onChange={(e) => setFormData({ ...formData, link_data: e.target.value })}
+                         className="input-field flex-1 text-blue-500"
+                         placeholder="https://drive.google.com/..."
+                       />
+                       {formData.link_data && (
+                          <a 
+                            href={formData.link_data} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="btn-secondary px-3 rounded text-sm flex items-center justify-center min-w-[80px]"
+                          >
+                             Open
+                          </a>
+                       )}
+                    </div>
+                  </div>
+
+                  {/* Attachments Section */}
+                  <div className="mt-6 border border-[var(--border-color)] rounded-lg p-4 bg-[var(--bg-secondary)] pb-6 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                        <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        ATTACHMENTS
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <input
                           type="file"
-                          ref={fileInputRef}
-                          onChange={handleFileUpload}
+                          multiple
                           className="hidden"
+                          ref={fileInputRef}
+                          onChange={(e) => handleFileUpload(e.target.files)}
                         />
-                        <button 
-                          className="flex items-center gap-1 text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded dark:bg-blue-900/30 dark:text-blue-400 disabled:opacity-50"
-                          onClick={() => fileInputRef.current?.click()}
+                        <button
+                          type="button"
                           disabled={isUploading}
-                          title="Upload new file and update Link Data"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[var(--accent-color)] hover:bg-[var(--accent-color)]/10 rounded transition-colors disabled:opacity-50"
                         >
-                          {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                          {isUploading ? 'Uploading...' : 'Upload File to GDrive'}
+                          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                          {isUploading ? 'Uploading...' : 'Upload'}
                         </button>
-                     </div>
+                      </div>
+                    </div>
+
+                <div 
+                  className={`min-h-[100px] border-2 border-dashed border-[var(--border-color)] rounded-lg p-4 transition-colors ${pendingFiles.length > 0 || (attachments && attachments.length > 0) ? 'grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[var(--bg-surface)]' : 'flex flex-col items-center justify-center bg-[var(--bg-secondary)] hover:bg-[var(--bg-surface)]'}`}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFileUpload(e.dataTransfer.files); }}
+                >
+                  {editingItem && attachments && attachments.length > 0 && (
+                    <>
+                      {attachments.map((file) => (
+                        <div key={file.id} className="flex items-center justify-between p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent-color)] transition-colors group/item">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="w-10 h-10 rounded bg-[var(--accent-color)]/10 flex items-center justify-center shrink-0">
+                              <svg className="w-5 h-5 text-[var(--accent-color)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.name || file.original_name}>
+                                {file.name || file.original_name || 'Unnamed file'}
+                              </p>
+                              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                {file.size ? (file.size / 1024).toFixed(2) : 0} KB
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                            {file.url && (
+                              <a 
+                                href={file.url} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-primary)] rounded transition-colors"
+                                title="Download"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAttachment(file.id)}
+                              disabled={isDeletingAttachment === file.id}
+                              className="p-1.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                              title="Delete"
+                            >
+                               {isDeletingAttachment === file.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
-                </label>
-                <div className="flex gap-2">
-                   <input
-                     value={formData.link_data}
-                     onChange={(e) => setFormData({ ...formData, link_data: e.target.value })}
-                     className="input-field flex-1 text-blue-500"
-                     placeholder="https://drive.google.com/..."
-                   />
-                   {formData.link_data && (
-                      <a 
-                        href={formData.link_data} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="btn-secondary px-3 rounded text-sm flex items-center justify-center min-w-[80px]"
-                      >
-                         Open
-                      </a>
-                   )}
+                  
+                  {pendingFiles && pendingFiles.length > 0 && (
+                    <>
+                      {pendingFiles.map((file, idx) => (
+                         <div key={`pending-${idx}`} className="flex items-center justify-between p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] opacity-70">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="w-10 h-10 rounded bg-[var(--accent-color)]/10 flex items-center justify-center shrink-0">
+                                <svg className="w-5 h-5 text-[var(--accent-color)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.name}>{file.name}</p>
+                                <p className="text-xs text-[var(--text-muted)] mt-0.5">Pending upload...</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 rounded shrink-0"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                         </div>
+                      ))}
+                    </>
+                  )}
+
+                  {(!attachments || attachments.length === 0) && (!pendingFiles || pendingFiles.length === 0) && (
+                    <div className="col-span-full flex flex-col items-center justify-center text-[var(--text-muted)] gap-2">
+                       <svg className="w-8 h-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                       </svg>
+                       <span className="text-sm font-medium">
+                         No attachments yet
+                       </span>
+                       <span className="text-xs text-center opacity-70">
+                         Drag & drop files here or click Upload button
+                       </span>
+                    </div>
+                  )}
                 </div>
-                {editingItem && !formData.invoice_date && (
-                   <div className="text-xs text-orange-500 mt-1">Please set Invoice Date to enable file upload</div>
-                )}
-                {!editingItem && (
-                   <div className="text-xs text-[var(--text-muted)] mt-1">File upload will be available after creating this Klaim.</div>
-                )}
               </div>
+              </>
+              )}
+
+              {/* Activity Log */}
+              {editingItem && (
+                <div className="mt-8">
+                  <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2 uppercase">
+                    <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Activity Log
+                  </h3>
+                  <div className="space-y-4">
+                    {activities.length === 0 ? (
+                      <p className="text-sm text-[var(--text-muted)] pb-4">No activity recorded yet.</p>
+                    ) : (
+                      activities.map((activity, index) => (
+                        <div key={activity.id} className="relative pl-6">
+                           {index !== activities.length - 1 && (
+                             <div className="absolute left-[7px] top-[24px] bottom-[-20px] w-px bg-[var(--border-color)]"></div>
+                           )}
+                           <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-[var(--bg-surface)] border-2 border-[var(--border-color)] flex items-center justify-center shadow-sm">
+                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent-color)]"></div>
+                           </div>
+                           <div className="text-sm">
+                             <span className="font-bold text-[var(--text-primary)]">{activity.user}</span>
+                             <span className="text-[var(--text-secondary)] ml-1">{activity.action}</span>
+                           </div>
+                           {activity.details && (
+                             <div className="text-sm text-[var(--text-secondary)] mt-1 whitespace-pre-wrap">{activity.details}</div>
+                           )}
+                           <div className="text-xs text-[var(--text-muted)] mt-1">
+                             {new Date(activity.created_at).toLocaleString('id-ID', {
+                               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                             })}
+                           </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex-none p-6 border-t border-[var(--border-color)] flex justify-end gap-3 bg-[var(--bg-secondary)] rounded-b-xl">
@@ -1073,7 +1308,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
               </button>
               <button 
                 onClick={handleSave} 
-                disabled={isSaving || !formData.claim_type || !formData.invoice_date}
+                disabled={isSaving || !formData.claim_type || !formData.whp_name || !formData.partner || !formData.subsidiary}
                 className="btn-primary px-6 py-2 rounded flex items-center gap-2 disabled:opacity-50"
               >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}

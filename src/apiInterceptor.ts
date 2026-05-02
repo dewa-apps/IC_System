@@ -960,12 +960,132 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       return new Response(null, { status: 204 });
     }
 
+    // --- KLAIM ATTACHMENTS ---
+    if (segments[0] === 'klaim' && segments[2] === 'attachments' && method === 'GET') {
+      const klaimId = segments[1];
+      const q = query(collection(db, 'attachments'), where('task_id', '==', klaimId));
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map(formatDoc);
+      items.sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tB - tA;
+      });
+      return new Response(JSON.stringify(items), { status: 200 });
+    }
+
+    if (segments[0] === 'klaim' && segments[2] === 'attachments' && method === 'POST') {
+      const klaimId = segments[1];
+      const formData = init?.body as FormData;
+      const file = formData.get('file') as File;
+      
+      if (!file) return new Response(JSON.stringify({ error: "No file" }), { status: 400 });
+
+      // Convert file to base64
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = error => reject(error);
+      });
+
+      // Get Klaim document to pass metadata
+      const klaimDoc = await getDoc(doc(db, 'data_list_klaim', klaimId));
+      const klaimData = klaimDoc.exists() ? klaimDoc.data() : null;
+      
+      const invoiceDateFromClient = formData.get('invoice_date') as string | null;
+      const whpNameFromClient = formData.get('whp_name') as string | null;
+
+      // Send to Google Apps Script
+      const gasUrl = "/api/gas-proxy";
+      const gasResponse = await originalFetch(gasUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'uploadFileKlaim',
+          base64: base64Data,
+          fileName: file.name,
+          mimeType: file.type,
+          invoiceDate: invoiceDateFromClient || klaimData?.invoice_date,
+          whpName: whpNameFromClient || klaimData?.whp_name,
+          klaimId: klaimData?.display_id || klaimId
+        })
+      });
+
+      if (!gasResponse.ok) {
+        const errText = await gasResponse.text();
+        throw new Error(errText || "Failed to communicate with Google Apps Script");
+      }
+
+      const gasResult = await gasResponse.json();
+
+      if (gasResult.status !== 'success') {
+        const errorMsg = gasResult.message || "Failed to upload to Google Drive";
+        if (errorMsg.includes('getFolderById')) {
+          throw new Error("Google Drive Folder ID belum dikonfigurasi. Silakan buka File > Google Apps Script > code.gs lalu ganti teks 'PASTE_ID_FOLDER_DI_SINI' dengan ID folder Shared Drive Anda, kemudian Deploy ulang script tersebut.");
+        }
+        throw new Error(errorMsg);
+      }
+
+      const downloadURL = gasResult.fileUrl;
+      const fileId = gasResult.fileId;
+      const folderUrl = gasResult.folderUrl;
+
+      // Update Klaim link_data if we got folderUrl
+      if (folderUrl && klaimDoc.exists()) {
+        await updateDoc(doc(db, 'data_list_klaim', klaimId), {
+          link_data: folderUrl
+        });
+      }
+
+      const docRef = await addDoc(collection(db, 'attachments'), {
+        task_id: klaimId,
+        filename: fileId, // Store fileId instead of storage path
+        original_name: file.name,
+        mime_type: file.type,
+        size: file.size,
+        url: downloadURL,
+        created_at: serverTimestamp()
+      });
+
+      Promise.all([
+        logActivity(klaimId, "Uploaded attachment", file.name)
+      ]).catch(e => console.error(e));
+      
+      const newDoc = await getDoc(docRef);
+      return new Response(JSON.stringify({ ...formatDoc(newDoc), folder_url: folderUrl }), { status: 201 });
+    }
+
+    if (segments[0] === 'klaim' && segments[2] === 'activities' && method === 'GET') {
+      const klaimId = segments[1];
+      const q = query(collection(db, 'activity_log'), where('task_id', '==', klaimId));
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map(formatDoc);
+      items.sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tB - tA;
+      });
+      return new Response(JSON.stringify(items), { status: 200 });
+    }
+
     // --- ATTACHMENTS ---
     if (segments[0] === 'tasks' && segments[2] === 'attachments' && method === 'GET') {
       const taskId = segments[1];
-      const q = query(collection(db, 'attachments'), where('task_id', '==', taskId), orderBy('created_at', 'desc'));
+      const q = query(collection(db, 'attachments'), where('task_id', '==', taskId));
       const snapshot = await getDocs(q);
-      return new Response(JSON.stringify(snapshot.docs.map(formatDoc)), { status: 200 });
+      const items = snapshot.docs.map(formatDoc);
+      items.sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tB - tA;
+      });
+      return new Response(JSON.stringify(items), { status: 200 });
     }
 
     if (segments[0] === 'tasks' && segments[2] === 'attachments' && method === 'POST') {
@@ -1051,10 +1171,18 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
       if (attachmentDoc.exists()) {
         const data = attachmentDoc.data();
         await deleteDoc(doc(db, 'attachments', attachmentId));
-        Promise.all([
-          logActivity(data.task_id, "Deleted attachment", data.original_name),
-          updateDoc(doc(db, 'tasks', data.task_id), { attachment_count: increment(-1) })
-        ]).catch(e => console.error(e));
+        
+        const promises = [
+          logActivity(data.task_id, "Deleted attachment", data.original_name)
+        ];
+        
+        // Only decrement attachment_count if it's a Task (not a Klaim)
+        const taskDocSnap = await getDoc(doc(db, 'tasks', data.task_id));
+        if (taskDocSnap.exists()) {
+          promises.push(updateDoc(doc(db, 'tasks', data.task_id), { attachment_count: increment(-1) }));
+        }
+
+        Promise.all(promises).catch(e => console.error(e));
       }
       return new Response(null, { status: 204 });
     }

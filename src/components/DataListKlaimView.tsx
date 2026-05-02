@@ -46,7 +46,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [selectedWHP, setSelectedWHP] = useState<string[]>([]);
 
   // Sort
-  const [sortField, setSortField] = useState<keyof DataListKlaim>('invoice_date');
+  const [sortField, setSortField] = useState<keyof DataListKlaim>('display_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Pagination
@@ -117,7 +117,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [showFilters, setShowFilters] = useState(false);
 
   const filteredData = useMemo(() => {
-    let filtered = dataKlaim;
+    let filtered = [...dataKlaim];
 
     if (searchQuery.trim()) {
       const ms = searchQuery.toLowerCase();

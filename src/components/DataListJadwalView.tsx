@@ -47,7 +47,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   const [selectedWHPartners, setSelectedWHPartners] = useState<string[]>([]);
 
   // Sort
-  const [sortField, setSortField] = useState<keyof DataListJadwal>('date');
+  const [sortField, setSortField] = useState<keyof DataListJadwal>('display_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Date Filter
@@ -171,7 +171,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   };
 
   const filteredJadwal = useMemo(() => {
-    let filtered = dataJadwal;
+    let filtered = [...dataJadwal];
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();

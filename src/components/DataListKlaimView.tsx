@@ -2,7 +2,7 @@ import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react
 import { DataListKlaim } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2 } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
 
@@ -53,6 +53,16 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50);
   
+  // Date Filter
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+
+  const toggleArrayItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, item: string) => {
+    setter(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
+    setCurrentPage(1);
+  };
+  
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
   const handleStatusChange = async (id: string, value: string) => {
@@ -90,25 +100,83 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [showFilters, setShowFilters] = useState(false);
 
   const filteredData = useMemo(() => {
-    return dataKlaim.filter(item => {
+    let filtered = dataKlaim;
+
+    if (searchQuery.trim()) {
       const ms = searchQuery.toLowerCase();
-      const matchSearch = ms === '' || 
+      filtered = filtered.filter(item => 
         (item.display_id || '').toLowerCase().includes(ms) ||
         (item.invoice_no || '').toLowerCase().includes(ms) ||
         (item.description || '').toLowerCase().includes(ms) ||
-        (item.whp_name || '').toLowerCase().includes(ms);
+        (item.whp_name || '').toLowerCase().includes(ms)
+      );
+    }
 
-      const matchType = selectedTypes.length === 0 || selectedTypes.includes(item.claim_type);
-      const matchStatus = selectedStatus.length === 0 || selectedStatus.includes(item.status);
-      const matchWHP = selectedWHP.length === 0 || selectedWHP.includes(item.whp_name);
+    if (selectedTypes.length > 0) {
+      filtered = filtered.filter(item => selectedTypes.includes(item.claim_type));
+    }
+    if (selectedStatus.length > 0) {
+      filtered = filtered.filter(item => selectedStatus.includes(item.status));
+    }
+    if (selectedWHP.length > 0) {
+      filtered = filtered.filter(item => selectedWHP.includes(item.whp_name));
+    }
 
-      return matchSearch && matchType && matchStatus && matchWHP;
-    }).sort((a, b) => {
-      let valA = a[sortField];
-      let valB = b[sortField];
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      let start = new Date(0);
+      let end = new Date();
+      end.setHours(23, 59, 59, 999);
+
+      if (dateFilter === 'today') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (dateFilter === 'last7') {
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        start.setHours(0, 0, 0, 0);
+      } else if (dateFilter === 'thisMonth') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else if (dateFilter === 'lastMonth') {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'thisYear') {
+        start = new Date(now.getFullYear(), 0, 1);
+      } else if (dateFilter === 'lastYear') {
+        start = new Date(now.getFullYear() - 1, 0, 1);
+        end = new Date(now.getFullYear() - 1, 11, 31);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'semester1') {
+        start = new Date(now.getFullYear(), 0, 1);
+        end = new Date(now.getFullYear(), 5, 30);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'semester2') {
+        start = new Date(now.getFullYear(), 6, 1);
+        end = new Date(now.getFullYear(), 11, 31);
+        end.setHours(23, 59, 59, 999);
+      } else if (dateFilter === 'custom') {
+        if (startDate) {
+          start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+        }
+        if (endDate) {
+          end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+        }
+      }
+
+      filtered = filtered.filter(j => {
+        if (!j.invoice_date) return false;
+        const taskDate = new Date(j.invoice_date);
+        return taskDate >= start && taskDate <= end;
+      });
+    }
+
+    filtered.sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
       
-      if (valA === undefined) valA = '';
-      if (valB === undefined) valB = '';
+      if (valA === undefined || valA === null) valA = '';
+      if (valB === undefined || valB === null) valB = '';
 
       if (typeof valA === 'string' && typeof valB === 'string') {
         return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -116,9 +184,11 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       if (typeof valA === 'number' && typeof valB === 'number') {
         return sortOrder === 'asc' ? valA - valB : valB - valA;
       }
-      return 0;
+      return sortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valB > valA ? 1 : -1);
     });
-  }, [dataKlaim, searchQuery, selectedTypes, selectedStatus, selectedWHP, sortField, sortOrder]);
+
+    return filtered;
+  }, [dataKlaim, searchQuery, selectedTypes, selectedStatus, selectedWHP, sortField, sortOrder, dateFilter, startDate, endDate]);
 
   const totalPages = Math.ceil(filteredData.length / rowsPerPage);
   const currentData = useMemo(() => {
@@ -406,64 +476,180 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     );
   };
 
-  return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--bg-surface)] relative overflow-hidden">
-      {/* Top Bar with Filters */}
-      <div className="flex-none px-4 py-3 border-b border-[var(--border-color)] bg-[var(--bg-surface)]">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold text-[var(--text-primary)]">Data List Klaim</h1>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                showFilters || selectedTypes.length > 0 || selectedStatus.length > 0 || selectedWHP.length > 0
-                  ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' 
-                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
-              }`}
-            >
-              <Filter className="w-4 h-4" />
-              Filters
-              {(selectedTypes.length > 0 || selectedStatus.length > 0 || selectedWHP.length > 0) && (
-                <span className="ml-1 bg-[var(--accent-color)] text-white text-xs px-1.5 py-0.5 rounded-full">
-                  {selectedTypes.length + selectedStatus.length + selectedWHP.length}
-                </span>
-              )}
-            </button>
-            {searchQuery && (
-               <button onClick={onClearSearch} className="flex items-center gap-1 px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] rounded-md transition-colors">
-                 <Search className="w-4 h-4" />
-                 Clear Search
-               </button>
-            )}
-          </div>
-          <div className="text-sm text-[var(--text-secondary)]">
-            {filteredData.length} entries
-          </div>
-        </div>
+  const activeFiltersCount = selectedTypes.length + selectedStatus.length + selectedWHP.length;
 
-        {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-sm">
-            {renderFilterSelect('Status', ['Open', 'In Progress', 'Pending Finance', 'Done'], selectedStatus, setSelectedStatus)}
-            {renderFilterSelect('Claim Type', uniqueClaimTypes, selectedTypes, setSelectedTypes)}
-            {renderFilterSelect('WHP Name', uniqueWHPs, selectedWHP, setSelectedWHP)}
+  return (
+    <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Filter Dropdown */}
+          <div className="relative group/main z-20">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+              <Filter className="w-3.5 h-3.5" />
+              Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+            </button>
+          
+          <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-40 py-2">
+            
+            {/* Status Submenu */}
+            <div className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+              <span className="font-medium">Status {selectedStatus.length > 0 && `(${selectedStatus.length})`}</span>
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)]" />
+              
+              <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                <div className="space-y-1">
+                  {["Open", "In Progress", "Pending Finance", "Done"].map(st => (
+                    <label key={`fs-${st}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedStatus.includes(st)}
+                        onChange={() => toggleArrayItem(setSelectedStatus, st)} 
+                        className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                      />
+                      <span className="text-sm text-[var(--text-primary)]">{st}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Type Submenu */}
+            {uniqueClaimTypes.length > 0 && (
+              <div className="relative group/type px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                <span className="font-medium">Claim Type {selectedTypes.length > 0 && `(${selectedTypes.length})`}</span>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/type:text-[var(--text-primary)]" />
+                
+                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/type:opacity-100 group-hover/type:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1">
+                    {uniqueClaimTypes.map(t => (
+                      <label key={`ft-${t}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedTypes.includes(t)}
+                          onChange={() => toggleArrayItem(setSelectedTypes, t)} 
+                          className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">{t}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* WHP Name Submenu */}
+            {uniqueWHPs.length > 0 && (
+              <div className="relative group/whp px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                <span className="font-medium">WHP Name {selectedWHP.length > 0 && `(${selectedWHP.length})`}</span>
+                <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/whp:text-[var(--text-primary)]" />
+                
+                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/whp:opacity-100 group-hover/whp:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-1">
+                    {uniqueWHPs.map(w => (
+                      <label key={`fw-${w}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedWHP.includes(w)}
+                          onChange={() => toggleArrayItem(setSelectedWHP, w)} 
+                          className="rounded border-gray-300 dark:border-gray-600 bg-[var(--bg-primary)] h-3.5 w-3.5" 
+                        />
+                        <span className="text-sm text-[var(--text-primary)]">{w}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
-        )}
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex items-center gap-2 bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+            <Calendar className="w-4 h-4 text-[var(--text-secondary)] ml-2" />
+            <select
+              value={dateFilter}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent border-none text-sm text-[var(--text-primary)] focus:ring-0 cursor-pointer py-1 pr-8 outline-none"
+            >
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="all">All Time</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="today">Today</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="last7">Last 7 Days</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisMonth">This Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastMonth">Last Month</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="thisYear">This Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="lastYear">Last Year</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester1">Semester 1 (Jan-Jun)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="semester2">Semester 2 (Jul-Dec)</option>
+              <option className="bg-[var(--bg-body)] text-[var(--text-primary)]" value="custom">Custom Range</option>
+            </select>
+          </div>
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm px-2 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
+              />
+              <span className="text-[var(--text-secondary)]">-</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm px-2 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-focus)]"
+              />
+            </div>
+          )}
+
+          {(activeFiltersCount > 0 || dateFilter !== 'all' || searchQuery.length > 0) && (
+            <button 
+              onClick={() => {
+                setSelectedTypes([]);
+                setSelectedStatus([]);
+                setSelectedWHP([]);
+                setDateFilter('all');
+                setStartDate('');
+                setEndDate('');
+                setCurrentPage(1);
+                onClearSearch?.();
+              }}
+              className="px-3 py-1.5 text-xs text-red-500 hover:text-white bg-red-500/10 hover:bg-red-500 border border-red-500/20 rounded-md transition-colors font-medium"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+        </div>
       </div>
 
       {/* Main Table Content */}
-      <div className="flex-1 overflow-auto bg-[var(--bg-body)] p-4">
+      <div className="flex-1 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-sm flex flex-col overflow-hidden">
         {filteredData.length === 0 ? (
           <div className="text-center py-12">
             <ListIcon className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--text-secondary)] mb-2">No Klaim found</h3>
-            <p className="text-[var(--text-muted)]">Check your filters or create a new klaim.</p>
+            <h3 className="text-lg font-bold text-[var(--text-secondary)] mb-2">No Klaim found</h3>
+            <p className="text-sm text-[var(--text-muted)]">Check your filters or create a new klaim.</p>
           </div>
         ) : (
-          <div className="bg-[var(--bg-surface)] rounded-lg shadow-sm border border-[var(--border-color)] overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] select-none">
+          <>
+          <div className="flex-1 overflow-auto overflow-x-auto min-w-0 pb-10">
+            <table className="w-full text-left border-collapse table-fixed select-none">
+              <thead className="bg-[var(--bg-surface)] sticky top-0 z-10 shadow-[0_1px_0_var(--border-color)]">
                 <tr>
-                  <th className="px-4 py-3 font-medium text-[var(--text-secondary)] sticky left-0 z-10 w-16 text-center">
+                  <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative" style={{ width: 60 }}>
                     No
                   </th>
                   {[
@@ -479,17 +665,20 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                   ].map((col) => (
                     <th 
                       key={col.key} 
-                      className="px-4 py-3 font-medium text-[var(--text-secondary)] relative group hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-                      style={{ width: colWidths[col.key] || 150, minWidth: 50, maxWidth: colWidths[col.key] || 150 }}
+                      className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--bg-secondary)] relative group"
+                      style={{ width: colWidths[col.key] || 150 }}
+                      onClick={() => handleSort(col.key as keyof DataListKlaim)}
                     >
-                      <div className="flex items-center gap-2 overflow-hidden" onClick={() => handleSort(col.key as keyof DataListKlaim)}>
+                      <div className="flex items-center gap-1 overflow-hidden">
                          <span className="truncate">{col.label}</span>
-                         {sortField === col.key && (
-                           sortOrder === 'asc' ? <ChevronUp className="w-3.5 h-3.5 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
+                         {sortField === col.key ? (
+                           sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-[var(--accent-color)] flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-[var(--accent-color)] flex-shrink-0" />
+                         ) : (
+                           <div className="w-3" />
                          )}
                       </div>
                       <div
-                        className="absolute right-0 top-0 bottom-0 w-1 hover:w-1.5 cursor-col-resize hover:bg-[var(--accent-color)] active:bg-[var(--accent-color)] opacity-0 group-hover:opacity-100 transition-all z-10"
+                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent-color)] opacity-0 group-hover:opacity-100 z-10 transition-colors"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -498,7 +687,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       />
                     </th>
                   ))}
-                  <th className="px-4 py-3 font-medium text-[var(--text-secondary)] sticky right-0 z-10 bg-[var(--bg-secondary)]">Actions</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider" style={{ width: 120 }}>Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
@@ -588,68 +777,69 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
               </tbody>
             </table>
           </div>
+          </>
         )}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex-none px-6 py-4 border-t border-[var(--border-color)] bg-[var(--bg-surface)] flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm text-[var(--text-secondary)]">
+        
+        {/* Pagination */}
+        <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 shrink-0 mt-auto">
+          <div className="flex items-center gap-4 text-xs text-[var(--text-secondary)] font-medium">
             <select
               value={rowsPerPage}
               onChange={(e) => {
                 setRowsPerPage(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="bg-transparent border border-[var(--border-color)] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] transition-all"
+              className="bg-transparent border-none focus:ring-0 cursor-pointer outline-none font-bold text-[var(--text-primary)]"
             >
               {[20, 50, 100, 200].map(v => (
-                <option key={v} value={v}>{v} rows</option>
+                <option className="bg-[var(--bg-body)] text-[var(--text-primary)] font-medium" key={v} value={v}>{v} rows</option>
               ))}
             </select>
-            <span>Showing {((currentPage - 1) * rowsPerPage) + 1} to {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length} entries</span>
+            <span>Showing {filteredData.length === 0 ? 0 : ((currentPage - 1) * rowsPerPage) + 1} to {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length} entries</span>
           </div>
           
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="hidden sm:inline text-sm">Prev</span>
-            </button>
-            
-            <div className="flex items-center gap-1 px-2">
-              {getPageNumbers(currentPage, totalPages).map((p, i) => (
-                <button
-                  key={i}
-                  onClick={() => typeof p === 'number' && setCurrentPage(p)}
-                  disabled={p === '...'}
-                  className={`min-w-[28px] h-[28px] text-xs rounded-md flex items-center justify-center font-medium transition-colors ${
-                    p === currentPage
-                      ? 'bg-[var(--accent-color)] text-white'
-                      : p === '...'
-                      ? 'text-[var(--text-muted)] cursor-default'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 text-xs"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="hidden sm:inline text-xs">Prev</span>
+              </button>
+              
+              <div className="flex items-center gap-1 px-2">
+                {getPageNumbers(currentPage, totalPages).map((p, i) => (
+                  <button
+                    key={i}
+                    onClick={() => typeof p === 'number' && setCurrentPage(p)}
+                    disabled={p === '...'}
+                    className={`min-w-[28px] h-[28px] text-xs rounded-md flex items-center justify-center font-bold transition-colors ${
+                      p === currentPage
+                        ? 'bg-[var(--accent-color)] text-white shadow-sm'
+                        : p === '...'
+                        ? 'text-[var(--text-muted)] cursor-default'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
 
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1"
-            >
-              <span className="hidden sm:inline text-sm">Next</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1 sm:px-3 sm:py-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-1 text-xs"
+              >
+                <span className="hidden sm:inline text-xs">Next</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Form Modal */}
       {isModalOpen && (

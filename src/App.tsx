@@ -68,7 +68,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal, DataListKlaim } from './types';
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
 import DataListKlaimView, { DataListKlaimViewRef } from './components/DataListKlaimView';

@@ -2,7 +2,7 @@ import React, { useState, useMemo, forwardRef, useImperativeHandle, useRef, useE
 import { DataListKlaim, Attachment, ActivityLog } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar, FileText, Image as ImageIcon, FileSpreadsheet, File as FileIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
 import { StatusDropdown, getStatusBadgeClass } from './StatusDropdown';
@@ -36,6 +36,14 @@ const getPageNumbers = (current: number, total: number) => {
   if (current <= 4) return [1, 2, 3, 4, 5, '...', total];
   if (current >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
   return [1, '...', current - 1, current, current + 1, '...', total];
+};
+
+const getFileIcon = (mimeType: string) => {
+  if (mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-blue-500" />;
+  if (mimeType === 'application/pdf') return <FileText className="w-5 h-5 text-red-500" />;
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return <FileSpreadsheet className="w-5 h-5 text-green-500" />;
+  if (mimeType.includes('word') || mimeType.includes('document')) return <FileText className="w-5 h-5 text-blue-700" />;
+  return <FileIcon className="w-5 h-5 text-[var(--text-secondary)]" />;
 };
 
 const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProps>(({ dataKlaim, searchQuery, onClearSearch, metadataOptions }, ref) => {
@@ -1194,14 +1202,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       {attachments.map((file) => (
                         <div key={file.id} className="flex items-center justify-between p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent-color)] transition-colors group/item">
                           <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-10 h-10 rounded bg-[var(--accent-color)]/10 flex items-center justify-center shrink-0">
-                              <svg className="w-5 h-5 text-[var(--accent-color)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                              </svg>
+                            <div className="w-10 h-10 rounded bg-[var(--bg-secondary)] flex items-center justify-center shrink-0">
+                              {getFileIcon(file.mime_type || '')}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.filename || file.original_name}>
-                                {file.filename || file.original_name || 'Unnamed file'}
+                              <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.original_name}>
+                                {file.original_name || 'Unnamed file'}
                               </p>
                               <p className="text-xs text-[var(--text-muted)] mt-0.5">
                                 {file.size ? (file.size / 1024).toFixed(2) : 0} KB
@@ -1241,10 +1247,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       {pendingFiles.map((file, idx) => (
                          <div key={`pending-${idx}`} className="flex items-center justify-between p-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-surface)] opacity-70">
                             <div className="flex items-center gap-3 overflow-hidden">
-                              <div className="w-10 h-10 rounded bg-[var(--accent-color)]/10 flex items-center justify-center shrink-0">
-                                <svg className="w-5 h-5 text-[var(--accent-color)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                </svg>
+                              <div className="w-10 h-10 rounded bg-[var(--bg-secondary)] flex items-center justify-center shrink-0">
+                                {getFileIcon(file.type || '')}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.name}>{file.name}</p>

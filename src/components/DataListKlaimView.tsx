@@ -2,7 +2,7 @@ import React, { useState, useMemo, forwardRef, useImperativeHandle, useRef, useE
 import { DataListKlaim, Attachment, ActivityLog } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar, FileText, Image as ImageIcon, FileSpreadsheet, File as FileIcon } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar, FileText, Image as ImageIcon, FileSpreadsheet, File as FileIcon, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
 import { StatusDropdown, getStatusBadgeClass } from './StatusDropdown';
@@ -64,6 +64,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+
+  // View Mode
+  const [viewMode, setViewMode] = useState<'list' | 'summary'>('list');
 
   const toggleArrayItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, item: string) => {
     setter(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
@@ -607,6 +610,34 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
   const activeFiltersCount = selectedTypes.length + selectedStatus.length + selectedWHP.length;
 
+  const summaryStats = useMemo(() => {
+    let totalDue = 0;
+    let totalTax = 0;
+    let totalClaim = 0;
+    const statusCounts: Record<string, number> = {};
+    const statusAmounts: Record<string, number> = {};
+    const partnerCounts: Record<string, number> = {};
+    const partnerAmounts: Record<string, number> = {};
+
+    filteredData.forEach(item => {
+      totalClaim += (item.claim_value || 0);
+      totalTax += (item.tax || 0);
+      totalDue += (item.due || 0);
+
+      const st = item.status || 'None';
+      if (!statusCounts[st]) { statusCounts[st] = 0; statusAmounts[st] = 0; }
+      statusCounts[st]++;
+      statusAmounts[st] += (item.due || 0);
+
+      const p = item.partner || 'Unknown';
+      if (!partnerCounts[p]) { partnerCounts[p] = 0; partnerAmounts[p] = 0; }
+      partnerCounts[p]++;
+      partnerAmounts[p] += (item.due || 0);
+    });
+
+    return { totalDue, totalTax, totalClaim, statusCounts, statusAmounts, partnerCounts, partnerAmounts };
+  }, [filteredData]);
+
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -761,6 +792,25 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         </div>
         
         <div className="flex flex-wrap items-center gap-2 justify-end">
+          {/* View Toggle */}
+          <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
+            <button 
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              title="List View"
+            >
+              <ListIcon className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">List</span>
+            </button>
+            <button 
+              onClick={() => setViewMode('summary')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'summary' ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--accent-color)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              title="Summary View"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Summary</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -771,6 +821,61 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
             <ListIcon className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
             <h3 className="text-lg font-bold text-[var(--text-secondary)] mb-2">No Klaim found</h3>
             <p className="text-sm text-[var(--text-muted)]">Check your filters or create a new klaim.</p>
+          </div>
+        ) : viewMode === 'summary' ? (
+          <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6 bg-[var(--bg-secondary)]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Due</div>
+                <div className="text-2xl font-black text-rose-500">{formatCurrency(summaryStats.totalDue)}</div>
+              </div>
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Tax</div>
+                <div className="text-2xl font-black text-[var(--text-primary)]">{formatCurrency(summaryStats.totalTax)}</div>
+              </div>
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Claim Value</div>
+                <div className="text-2xl font-black text-[var(--text-primary)]">{formatCurrency(summaryStats.totalClaim)}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Claims by Status */}
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-3 mb-4">Summary by Status</h3>
+                <div className="space-y-3">
+                  {Object.entries(summaryStats.statusCounts).map(([status, count]) => (
+                    <div key={status} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <StatusDropdown value={status as any} onChange={() => {}} disabled options={STATUS_OPTIONS} />
+                        <span className="text-sm text-[var(--text-muted)] font-medium">({count} items)</span>
+                      </div>
+                      <div className="text-sm font-bold text-[var(--text-primary)]">
+                        {formatCurrency(summaryStats.statusAmounts[status])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Claims by Partner */}
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-3 mb-4">Summary by Partner</h3>
+                <div className="space-y-3">
+                  {Object.entries(summaryStats.partnerCounts).map(([partner, count]) => (
+                    <div key={partner} className="flex items-center justify-between hover:bg-[var(--bg-secondary)] p-2 rounded -mx-2 transition-colors">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-[var(--text-primary)]">{partner}</span>
+                        <span className="text-xs text-[var(--text-muted)]">{count} items</span>
+                      </div>
+                      <div className="text-sm font-bold text-[var(--text-primary)]">
+                        {formatCurrency(summaryStats.partnerAmounts[partner])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <>
@@ -871,7 +976,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         )}
         
         {/* Pagination */}
-        {filteredData.length > 0 && (
+        {filteredData.length > 0 && viewMode === 'list' && (
           <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 shrink-0 mt-auto">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">

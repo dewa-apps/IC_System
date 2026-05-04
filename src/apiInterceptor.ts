@@ -875,7 +875,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
         if (targetDoc.exists()) {
           linkData.target_task_title = targetDoc.data().title;
           linkData.target_task_status = targetDoc.data().status;
-          linkData.target_task_display_id = targetDoc.data().display_id;
+          linkData.target_task_display_id = targetDoc.data().display_id || `IC-${targetDoc.id}`;
           
           if (isCurrentTaskTarget) {
             linkData.target_task_id = linkData.source_task_id;

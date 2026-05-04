@@ -192,8 +192,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       }
 
       filtered = filtered.filter(j => {
-        if (!j.invoice_date) return false;
-        const taskDate = new Date(j.invoice_date);
+        const dateStr = j.invoice_date || new Date().toISOString().split('T')[0];
+        const taskDate = new Date(dateStr);
         return taskDate >= start && taskDate <= end;
       });
     }
@@ -565,7 +565,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   };
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(val);
+    return new Intl.NumberFormat('id-ID', { 
+      style: 'currency', 
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(Math.round(val));
   };
 
   const formatDate = (dateStr: string) => {
@@ -614,15 +619,24 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     let totalDue = 0;
     let totalTax = 0;
     let totalClaim = 0;
+    let outstandingCount = 0;
+    let outstandingAmount = 0;
     const statusCounts: Record<string, number> = {};
     const statusAmounts: Record<string, number> = {};
     const partnerCounts: Record<string, number> = {};
     const partnerAmounts: Record<string, number> = {};
+    const typeCounts: Record<string, number> = {};
+    const typeAmounts: Record<string, number> = {};
 
     filteredData.forEach(item => {
       totalClaim += (item.claim_value || 0);
       totalTax += (item.tax || 0);
       totalDue += (item.due || 0);
+
+      if (!item.invoice_date) {
+        outstandingCount++;
+        outstandingAmount += (item.due || 0);
+      }
 
       const st = item.status || 'None';
       if (!statusCounts[st]) { statusCounts[st] = 0; statusAmounts[st] = 0; }
@@ -633,9 +647,14 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       if (!partnerCounts[p]) { partnerCounts[p] = 0; partnerAmounts[p] = 0; }
       partnerCounts[p]++;
       partnerAmounts[p] += (item.due || 0);
+
+      const t = item.claim_type || 'Unknown';
+      if (!typeCounts[t]) { typeCounts[t] = 0; typeAmounts[t] = 0; }
+      typeCounts[t]++;
+      typeAmounts[t] += (item.due || 0);
     });
 
-    return { totalDue, totalTax, totalClaim, statusCounts, statusAmounts, partnerCounts, partnerAmounts };
+    return { totalDue, totalTax, totalClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, typeCounts, typeAmounts };
   }, [filteredData]);
 
   return (
@@ -824,7 +843,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
           </div>
         ) : viewMode === 'summary' ? (
           <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6 bg-[var(--bg-secondary)]">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Outstanding (No Inv Date)</div>
+                <div className="text-2xl font-black text-amber-500">{formatCurrency(summaryStats.outstandingAmount)}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">{summaryStats.outstandingCount} items</div>
+              </div>
               <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
                 <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Due</div>
                 <div className="text-2xl font-black text-rose-500">{formatCurrency(summaryStats.totalDue)}</div>
@@ -839,7 +863,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Claims by Status */}
               <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
                 <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-3 mb-4">Summary by Status</h3>
@@ -852,6 +876,24 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       </div>
                       <div className="text-sm font-bold text-[var(--text-primary)]">
                         {formatCurrency(summaryStats.statusAmounts[status])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Claims by Type */}
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-3 mb-4">Summary by Claim Type</h3>
+                <div className="space-y-3">
+                  {Object.entries(summaryStats.typeCounts).map(([type, count]) => (
+                    <div key={type} className="flex items-center justify-between hover:bg-[var(--bg-secondary)] p-2 rounded -mx-2 transition-colors">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-[var(--text-primary)]">{type}</span>
+                        <span className="text-xs text-[var(--text-muted)]">{count} items</span>
+                      </div>
+                      <div className="text-sm font-bold text-[var(--text-primary)]">
+                        {formatCurrency(summaryStats.typeAmounts[type])}
                       </div>
                     </div>
                   ))}

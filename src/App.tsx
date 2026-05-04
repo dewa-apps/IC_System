@@ -1582,7 +1582,15 @@ export default function App() {
   };
 
   const fetchTaskLinks = async (taskId: string | number) => {
-    // Left as placeholder
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}/links`);
+      if (res.ok) {
+        const linksData = await res.json();
+        setTaskLinks(linksData);
+      }
+    } catch (error) {
+      console.error("Failed to fetch task links:", error);
+    }
   };
 
   const handleAddLink = async (targetTaskId: string | number) => {
@@ -1969,6 +1977,8 @@ export default function App() {
   useEffect(() => {
     if (!editingTask?.id) return;
     
+    fetchTaskLinks(editingTask.id);
+    
     // Subscribe to comments
     const unsubscribeComments = onSnapshot(
       query(collection(db, 'comments'), where('task_id', '==', editingTask.id)), 
@@ -1999,21 +2009,6 @@ export default function App() {
       (error) => console.error("Attachment listener error:", error)
     );
     
-    // Subscribe to task links
-    const unsubscribeLinks = onSnapshot(
-      query(collection(db, 'task_links'), where('source_task_id', '==', editingTask.id)), 
-      (snapshot) => { 
-        const items = snapshot.docs.map(formatDoc);
-        items.sort((a, b) => {
-           const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-           const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-           return tB - tA;
-        });
-        setTaskLinks(items); 
-      },
-      (error) => console.error("Link listener error:", error)
-    );
-    
     // Subscribe to activities
     const unsubscribeActivities = onSnapshot(
       query(collection(db, 'activity_log'), where('task_id', '==', editingTask.id)), 
@@ -2032,7 +2027,6 @@ export default function App() {
     return () => {
       unsubscribeComments();
       unsubscribeAttachments();
-      unsubscribeLinks();
       unsubscribeActivities();
     };
   }, [editingTask?.id]);

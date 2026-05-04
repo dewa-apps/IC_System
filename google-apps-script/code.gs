@@ -190,6 +190,65 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // Jika request adalah untuk backup datalist klaim ke Google Sheets
+    if (data.action === 'backupDataListKlaimToSheets') {
+      var sheetId = data.sheetId; // ID spreadsheet
+      var sheetName = data.sheetName || 'KLAIM'; // Sheet yang dituju
+      var spreadsheet = SpreadsheetApp.openById(sheetId);
+      var sheet = spreadsheet.getSheetByName(sheetName);
+      
+      // Jika sheet tidak ada, buat sheet baru
+      if (!sheet) {
+        sheet = spreadsheet.insertSheet(sheetName);
+      } else {
+        sheet.clear();
+      }
+      
+      var klaimList = data.klaim;
+      if (!klaimList || klaimList.length === 0) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'success',
+          message: "No klaim to backup"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Claim Type", "Invoice Date", "Invoice No",
+        "Description", "Subject Email", "Link Data", "WHP Name", "Partner",
+        "Claim Value", "Tax", "Due", "Subsidiary", "Status", "Remark"
+      ];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+
+      var rows = klaimList.map(function(item) {
+        return [
+          item.id || "",
+          item.display_id || "",
+          item.claim_type || "",
+          item.invoice_date || "",
+          item.invoice_no || "",
+          item.description || "",
+          item.subject_email || "",
+          item.link_data || "",
+          item.whp_name || "",
+          item.partner || "",
+          item.claim_value !== undefined ? item.claim_value : "",
+          item.tax !== undefined ? item.tax : "",
+          item.due !== undefined ? item.due : "",
+          item.subsidiary || "",
+          item.status || "",
+          item.remark || ""
+        ];
+      });
+      
+      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Backup klaim sukses!'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // Jika request adalah untuk upload file klaim
     if (data.action === 'uploadFileKlaim') {
       var fileData = data.base64; 

@@ -29,15 +29,14 @@ const getPageNumbers = (current: number, total: number) => {
   return [1, '...', current - 1, current, current + 1, '...', total];
 };
 
-const getStatusBadgeClass = (status: string) => {
-  switch (status) {
-    case 'Open': return 'badge-accent';
-    case 'In Progress': return 'badge-warning';
-    case 'Done': return 'badge-success';
-    case 'None': return 'badge-neutral';
-    default: return 'badge-neutral';
-  }
-};
+import { StatusDropdown, getStatusBadgeClass } from './StatusDropdown';
+
+const JADWAL_STATUS_OPTIONS = [
+  { value: 'None', label: 'None' },
+  { value: 'Open', label: 'Open' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Done', label: 'Done' }
+];
 
 const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewProps>(({ dataJadwal, searchQuery, onClearSearch, metadataOptions }, ref) => {
   
@@ -47,7 +46,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   const [selectedWHPartners, setSelectedWHPartners] = useState<string[]>([]);
 
   // Sort
-  const [sortField, setSortField] = useState<keyof DataListJadwal>('display_id');
+  const [sortField, setSortField] = useState<keyof DataListJadwal>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Date Filter
@@ -171,7 +170,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   };
 
   const filteredJadwal = useMemo(() => {
-    let filtered = [...dataJadwal];
+    let filtered = dataJadwal;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -871,36 +870,22 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                     <td className="px-4 py-3 text-sm truncate text-[var(--text-secondary)]" title={jadwal.wh_name}>{jadwal.wh_name}</td>
                     <td className="px-4 py-3 text-sm truncate" onClick={(e) => e.stopPropagation()}>
                       <div className="relative inline-block w-full max-w-[120px]">
-                        <select 
+                        <StatusDropdown
                           value={jadwal.status_btb_wh}
-                          onChange={(e) => handleStatusChange(jadwal.id, 'status_btb_wh', e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={(newVal) => handleStatusChange(jadwal.id, 'status_btb_wh', newVal)}
                           disabled={updatingStatusId === `${jadwal.id}-status_btb_wh`}
-                          className={`w-full appearance-none px-2 py-0.5 rounded text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all ${getStatusBadgeClass(jadwal.status_btb_wh)} ${updatingStatusId === `${jadwal.id}-status_btb_wh` ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          <option value="None" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">None</option>
-                          <option value="Open" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Open</option>
-                          <option value="In Progress" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">In Progress</option>
-                          <option value="Done" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Done</option>
-                        </select>
-                        <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                          options={JADWAL_STATUS_OPTIONS}
+                        />
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm truncate" onClick={(e) => e.stopPropagation()}>
                       <div className="relative inline-block w-full max-w-[120px]">
-                        <select 
+                        <StatusDropdown
                           value={jadwal.status_btb_brand}
-                          onChange={(e) => handleStatusChange(jadwal.id, 'status_btb_brand', e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={(newVal) => handleStatusChange(jadwal.id, 'status_btb_brand', newVal)}
                           disabled={updatingStatusId === `${jadwal.id}-status_btb_brand`}
-                          className={`w-full appearance-none px-2 py-0.5 rounded text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all ${getStatusBadgeClass(jadwal.status_btb_brand)} ${updatingStatusId === `${jadwal.id}-status_btb_brand` ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          <option value="None" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">None</option>
-                          <option value="Open" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Open</option>
-                          <option value="In Progress" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">In Progress</option>
-                          <option value="Done" className="bg-[var(--bg-surface)] text-[var(--text-primary)]">Done</option>
-                        </select>
-                        <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                          options={JADWAL_STATUS_OPTIONS}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -1106,16 +1091,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Status</label>
-                      <select 
+                      <StatusDropdown
                         value={formData.status_btb_wh}
-                        onChange={(e) => setFormData({...formData, status_btb_wh: e.target.value as any})}
-                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
-                      >
-                        <option value="None">None</option>
-                        <option value="Open">Open</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Done">Done</option>
-                      </select>
+                        onChange={(newVal) => setFormData({...formData, status_btb_wh: newVal as any})}
+                        options={JADWAL_STATUS_OPTIONS}
+                        variant="input"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Subject Email WHP</label>
@@ -1137,16 +1118,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Status</label>
-                      <select 
+                      <StatusDropdown
                         value={formData.status_btb_brand}
-                        onChange={(e) => setFormData({...formData, status_btb_brand: e.target.value as any})}
-                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded p-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] transition-all"
-                      >
-                        <option value="None">None</option>
-                        <option value="Open">Open</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Done">Done</option>
-                      </select>
+                        onChange={(newVal) => setFormData({...formData, status_btb_brand: newVal as any})}
+                        options={JADWAL_STATUS_OPTIONS}
+                        variant="input"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">Subject Email</label>

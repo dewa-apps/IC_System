@@ -1475,6 +1475,11 @@ export default function App() {
     dataJadwalRef.current = dataJadwal;
   }, [dataJadwal]);
 
+  const dataKlaimRef = useRef(dataKlaim);
+  useEffect(() => {
+    dataKlaimRef.current = dataKlaim;
+  }, [dataKlaim]);
+
   useEffect(() => {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
@@ -1511,6 +1516,17 @@ export default function App() {
              sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
              sheetName: 'JADWAL',
              jadwal: dataJadwalRef.current
+           })
+         });
+
+         await apiFetch('/api/gas-proxy', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ 
+             action: 'backupDataListKlaimToSheets',
+             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+             sheetName: 'KLAIM',
+             klaim: dataKlaimRef.current
            })
          });
        } catch (err) {
@@ -2994,6 +3010,18 @@ export default function App() {
                                 })
                               });
                               if (!jadwalRes.ok) throw new Error('Jadwal backup failed');
+
+                              const klaimRes = await apiFetch('/api/gas-proxy', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                  action: 'backupDataListKlaimToSheets',
+                                  sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+                                  sheetName: 'KLAIM',
+                                  klaim: dataKlaim // directly passing front-end state
+                                })
+                              });
+                              if (!klaimRes.ok) throw new Error('Klaim backup failed');
 
                               toast.success('Backup to Google Sheets completed successfully!', { id: toastId });
                             } catch (error) {

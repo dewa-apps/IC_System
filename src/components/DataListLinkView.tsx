@@ -51,9 +51,10 @@ const getCategoryBadgeClass = (category: string) => {
 const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(({ dataLinks, categories, searchQuery }, ref) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
-  // Sort
-  const [sortField, setSortField] = useState<keyof DataListLink>('display_id');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // Sort (default ASC by created_at implies we want older records first if asc, or newer if desc)
+  // To sort default asc by create date as requested:
+  const [sortField, setSortField] = useState<keyof DataListLink>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);

@@ -1,14 +1,23 @@
-import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useMemo, forwardRef, useImperativeHandle, useRef, useEffect } from 'react';
 import { DataListKlaim, Attachment, ActivityLog } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
+import { StatusDropdown, getStatusBadgeClass } from './StatusDropdown';
 
 export interface DataListKlaimViewRef {
   openAddModal: () => void;
 }
+
+const STATUS_OPTIONS = [
+  { value: 'Open', label: 'Open' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Pending Finance', label: 'Pending Fin' },
+  { value: 'Done', label: 'Done' },
+  { value: 'Cancelled', label: 'Cancelled' }
+];
 
 interface DataListKlaimViewProps {
   dataKlaim: DataListKlaim[];
@@ -27,16 +36,6 @@ const getPageNumbers = (current: number, total: number) => {
   if (current <= 4) return [1, 2, 3, 4, 5, '...', total];
   if (current >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
   return [1, '...', current - 1, current, current + 1, '...', total];
-};
-
-const getStatusBadgeClass = (status: string) => {
-  switch (status) {
-    case 'Open': return 'badge-accent';
-    case 'In Progress': return 'badge-warning';
-    case 'Pending Finance': return 'badge-info';
-    case 'Done': return 'badge-success';
-    default: return 'badge-neutral';
-  }
 };
 
 const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProps>(({ dataKlaim, searchQuery, onClearSearch, metadataOptions }, ref) => {
@@ -196,7 +195,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       if (valB === undefined || valB === null) valB = '';
 
       if (typeof valA === 'string' && typeof valB === 'string') {
-        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return sortOrder === 'asc' 
+          ? valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' }) 
+          : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
       }
       if (typeof valA === 'number' && typeof valB === 'number') {
         return sortOrder === 'asc' ? valA - valB : valB - valA;
@@ -432,6 +433,36 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       const newVal = { ...prev, [field]: val };
       return newVal;
     });
+  };
+
+  const handleNumberPaste = (e: React.ClipboardEvent<HTMLInputElement>, field: 'claim_value' | 'tax') => {
+    const pasted = e.clipboardData.getData('text');
+    if (!pasted) return;
+    
+    e.preventDefault();
+    
+    // Remove space, currency symbols, keeping only digits, dot, comma, minus
+    let cleaned = pasted.replace(/[^\d.,\-]/g, '');
+    
+    // Match explicit decimals: 1 or 2 digits at the end
+    const match2 = cleaned.match(/^(.*)(,|\.)(\d{2})$/);
+    const match1 = cleaned.match(/^(.*)(,|\.)(\d{1})$/);
+    
+    if (match2) {
+      const mainInt = match2[1].replace(/[,.]/g, '');
+      cleaned = `${mainInt}.${match2[3]}`;
+    } else if (match1) {
+      const mainInt = match1[1].replace(/[,.]/g, '');
+      cleaned = `${mainInt}.${match1[3]}`;
+    } else {
+      // e.g. 4,528,144 or 4.528.144 -> strip all
+      cleaned = cleaned.replace(/[,.]/g, '');
+    }
+
+    const val = parseFloat(cleaned);
+    if (!isNaN(val)) {
+      handleClaimValueTaxChange(field, String(val));
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -815,16 +846,11 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                              <span className="text-xs text-[var(--text-secondary)]">Updating...</span>
                            </div>
                          ) : (
-                           <select
-                              value={item.status}
-                              onChange={(e) => handleStatusChange(item.id, e.target.value, item.status)}
-                              className={`text-xs font-semibold px-2 py-1 rounded-full border-0 focus:ring-2 focus:ring-[var(--border-focus)] appearance-none cursor-pointer ${getStatusBadgeClass(item.status)}`}
-                           >
-                             <option value="Open">Open</option>
-                             <option value="In Progress">In Progress</option>
-                             <option value="Pending Finance">Pending Fin</option>
-                             <option value="Done">Done</option>
-                           </select>
+                           <StatusDropdown 
+                             value={item.status} 
+                             onChange={(newVal) => handleStatusChange(item.id, newVal, item.status)} 
+                             options={STATUS_OPTIONS}
+                           />
                          )}
                       </td>
                     </tr>
@@ -954,7 +980,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     value={formData.claim_type}
                     onChange={(e) => setFormData({ ...formData, claim_type: e.target.value })}
                     className="input-field"
-                    placeholder="e.g. C01"
+                    placeholder="e.g. Mishandling"
                     required
                   />
                   <datalist id="claimTypeOptions">
@@ -979,7 +1005,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     value={formData.invoice_no}
                     onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
                     className="input-field"
-                    placeholder="INV-XXXXX"
+                    placeholder="e.g. INV/KNS/XXXX"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -1050,16 +1076,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-[var(--text-secondary)]">Status</label>
-                  <select
+                  <StatusDropdown 
                     value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="input-field"
-                  >
-                    <option value="Open">Open</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Pending Finance">Pending Finance</option>
-                    <option value="Done">Done</option>
-                  </select>
+                    onChange={(newVal) => setFormData({ ...formData, status: newVal as any })}
+                    options={STATUS_OPTIONS}
+                    variant="input"
+                  />
                 </div>
               </div>
 
@@ -1070,6 +1092,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     type="number"
                     value={formData.claim_value || ''}
                     onChange={(e) => handleClaimValueTaxChange('claim_value', e.target.value)}
+                    onPaste={(e) => handleNumberPaste(e, 'claim_value')}
                     className="input-field font-mono"
                     placeholder="0"
                   />
@@ -1080,6 +1103,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     type="number"
                     value={formData.tax || ''}
                     onChange={(e) => handleClaimValueTaxChange('tax', e.target.value)}
+                    onPaste={(e) => handleNumberPaste(e, 'tax')}
                     className="input-field font-mono"
                     placeholder="0"
                   />
@@ -1176,8 +1200,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                               </svg>
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.name || file.original_name}>
-                                {file.name || file.original_name || 'Unnamed file'}
+                              <p className="text-sm font-semibold text-[var(--text-primary)] truncate" title={file.filename || file.original_name}>
+                                {file.filename || file.original_name || 'Unnamed file'}
                               </p>
                               <p className="text-xs text-[var(--text-muted)] mt-0.5">
                                 {file.size ? (file.size / 1024).toFixed(2) : 0} KB

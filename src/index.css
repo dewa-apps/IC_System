@@ -53,6 +53,8 @@
   --badge-warning-bg: #FFFAE6;
   --badge-danger-text: #DE350B;
   --badge-danger-bg: #FFEBE6;
+  --badge-info-text: #00B8D9;
+  --badge-info-bg: #E6FCFF;
   --badge-neutral-text: #42526E;
   --badge-neutral-bg: #DFE1E6;
   --badge-purple-text: #403294;
@@ -105,6 +107,8 @@
   --badge-warning-bg: rgba(251, 191, 36, 0.1);
   --badge-danger-text: #F87171;
   --badge-danger-bg: rgba(248, 113, 113, 0.1);
+  --badge-info-text: #22D3EE;
+  --badge-info-bg: rgba(34, 211, 238, 0.1);
   --badge-neutral-text: #B3BAC5;
   --badge-neutral-bg: rgba(179, 186, 197, 0.1);
   --badge-purple-text: #9F8FEF;
@@ -141,6 +145,7 @@ body {
 .badge-success { color: var(--badge-success-text); background-color: var(--badge-success-bg); }
 .badge-warning { color: var(--badge-warning-text); background-color: var(--badge-warning-bg); }
 .badge-danger { color: var(--badge-danger-text); background-color: var(--badge-danger-bg); }
+.badge-info { color: var(--badge-info-text); background-color: var(--badge-info-bg); }
 .badge-neutral { color: var(--badge-neutral-text); background-color: var(--badge-neutral-bg); }
 .badge-purple { color: var(--badge-purple-text); background-color: var(--badge-purple-bg); }
 

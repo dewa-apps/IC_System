@@ -226,6 +226,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   }, [filteredData, currentPage, rowsPerPage]);
 
   const handleSort = (field: keyof DataListKlaim) => {
+    if (isResizingRef.current) return;
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -244,7 +245,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
   const handleMouseUp = React.useCallback(() => {
     setResizingCol(null);
-    setTimeout(() => { isResizingRef.current = false; }, 0);
+    setTimeout(() => { isResizingRef.current = false; }, 50);
   }, []);
 
   React.useEffect(() => {
@@ -956,6 +957,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                           e.preventDefault();
                           e.stopPropagation();
                           setResizingCol({ key: col.key, startX: e.clientX, startWidth: colWidths[col.key] || 150 });
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                         }}
                       />
                     </th>

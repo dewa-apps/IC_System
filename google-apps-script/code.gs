@@ -20,6 +20,15 @@ function doPost(e) {
     // Kita menggunakan text/plain dari frontend untuk menghindari isu CORS Preflight
     var data = JSON.parse(e.postData.contents);
     
+    // Helper function to format date string to YYYY-MM-DD
+    function formatDateString(dateStr) {
+      if (!dateStr || typeof dateStr !== 'string') return dateStr || "";
+      if (dateStr.indexOf('T') !== -1) {
+        return dateStr.split('T')[0];
+      }
+      return dateStr;
+    }
+    
     // Jika request adalah untuk mengirim email
     if (data.action === 'sendEmail') {
       MailApp.sendEmail({
@@ -53,7 +62,8 @@ function doPost(e) {
       // 1. Definisikan Judul Kolom (Headers)
       var headers = [
         "Task ID", "Display ID", "Title", "Status", "Priority", 
-        "Assignee", "Category", "Brand", "Due Date", "Created At"
+        "Assignee", "Category", "Brand", "Due Date", "Created At",
+        "Request Date", "Description", "Create By", "Requestor", "Division"
       ];
       sheet.appendRow(headers);
       
@@ -62,17 +72,26 @@ function doPost(e) {
 
       // 2. Memasukkan Baris Tabel (Row)
       var rows = tasks.map(function(task) {
+        // Strip HTML tags from description if needed, though for Sheets backup we can just pass the string.
+        // It might have HTML tags, you could use a simple regex replacing tags with empty string.
+        var desc = (task.description || "").replace(/<[^>]+>/g, "");
+        var displayId = task.display_id || ("IC-" + task.id);
         return [
           task.id || "",
-          task.display_id || "",
+          displayId,
           task.title || "",
           task.status || "",
           task.priority || "",
           task.assignee || "Unassigned",
           task.category || "",
           task.brand || "",
-          task.due_date || "",
-          task.created_at || ""
+          formatDateString(task.due_date),
+          formatDateString(task.created_at),
+          formatDateString(task.request_date),
+          desc,
+          task.authorName || "",
+          task.requestor || "",
+          task.division || ""
         ];
       });
       
@@ -168,7 +187,7 @@ function doPost(e) {
         return [
           item.id || "",
           item.display_id || "",
-          item.date || "",
+          formatDateString(item.date),
           item.type || "",
           item.category || "",
           item.wh_code || "",
@@ -225,7 +244,7 @@ function doPost(e) {
           item.id || "",
           item.display_id || "",
           item.claim_type || "",
-          item.invoice_date || "",
+          formatDateString(item.invoice_date),
           item.invoice_no || "",
           item.description || "",
           item.subject_email || "",
@@ -323,6 +342,148 @@ function doPost(e) {
         status: 'success',
         fileUrl: file.getUrl(),
         fileId: file.getId()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Fetch Warehouse Data
+    if (data.action === 'fetchWarehouseData') {
+      var sheetIdWarehouse = data.sheetId; 
+      var sheetNameWarehouse = data.sheetName;
+      var spreadsheetWarehouse = SpreadsheetApp.openById(sheetIdWarehouse);
+      var sheetWarehouse = spreadsheetWarehouse.getSheetByName(sheetNameWarehouse);
+      
+      var resultDataWarehouse = sheetWarehouse.getDataRange().getDisplayValues();
+      if (resultDataWarehouse.length === 0) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'success',
+          data: []
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var headersWarehouse = resultDataWarehouse[0];
+      var rowsWarehouse = resultDataWarehouse.slice(1).map(function(row) {
+        var obj = {};
+        headersWarehouse.forEach(function(header, i) {
+          obj[header] = row[i];
+        });
+        return obj;
+      });
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        data: rowsWarehouse
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Upload Warehouse File
+    if (data.action === 'uploadWarehouseFile') {
+      var fileDataWH = data.base64; 
+      var fileNameWH = data.fileName;
+      var mimeTypeWH = data.mimeType;
+      
+      var whpParam = data.whp || "UnknownWHP";
+      var whpNameParam = data.whpName || "UnknownName";
+      var sheetIdWH = data.sheetId;
+      var sheetNameWH = data.sheetName;
+      
+      var rootFolderIdWH = "1_wFZ5TCpQZ3Sq81aVjy36ATsI81RxT-5"; 
+      var rootFolderWH = DriveApp.getFolderById(rootFolderIdWH);
+      
+      // Check for WHP folder
+      var whpFolders = rootFolderWH.getFoldersByName(whpParam);
+      var whpFolderItem;
+      if (whpFolders.hasNext()) {
+        whpFolderItem = whpFolders.next();
+      } else {
+        whpFolderItem = rootFolderWH.createFolder(whpParam);
+      }
+      
+      // Check for WHP Name folder
+      var nameFolders = whpFolderItem.getFoldersByName(whpNameParam);
+      var nameFolderItem;
+      if (nameFolders.hasNext()) {
+        nameFolderItem = nameFolders.next();
+      } else {
+        nameFolderItem = whpFolderItem.createFolder(whpNameParam);
+      }
+      
+      var decodedDataWH = Utilities.base64Decode(fileDataWH);
+      var blobWH = Utilities.newBlob(decodedDataWH, mimeTypeWH, fileNameWH);
+      var fileWH = nameFolderItem.createFile(blobWH);
+      var folderUrlWH = nameFolderItem.getUrl();
+      
+      // Update Google Sheet with folder URL
+      if (sheetIdWH && sheetNameWH) {
+        var spreadWH = SpreadsheetApp.openById(sheetIdWH);
+        var sWH = spreadWH.getSheetByName(sheetNameWH);
+        if (sWH) {
+          var dRange = sWH.getDataRange();
+          var sVals = dRange.getDisplayValues();
+          if (sVals.length > 0) {
+            var headWH = sVals[0];
+            var fIdx = headWH.indexOf('folder');
+            var wIdx = headWH.indexOf('whp');
+            var nIdx = headWH.indexOf('name');
+            
+            if (fIdx !== -1 && wIdx !== -1 && nIdx !== -1) {
+              for (var j = 1; j < sVals.length; j++) {
+                if (sVals[j][wIdx] === whpParam && sVals[j][nIdx] === whpNameParam) {
+                  sWH.getRange(j + 1, fIdx + 1).setValue(folderUrlWH);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        fileUrl: fileWH.getUrl(),
+        fileId: fileWH.getId(),
+        folderUrl: folderUrlWH
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // List Warehouse Files
+    if (data.action === 'listWarehouseFiles') {
+      var dirUrl = data.folderUrl;
+      var fileList = [];
+      try {
+        var strUrl = String(dirUrl || '');
+        var idMatch = strUrl.match(/[-\w]{25,}/);
+        if (idMatch && idMatch[0]) {
+          var tgtFolder = DriveApp.getFolderById(idMatch[0]);
+          var fIter = tgtFolder.getFiles();
+          while (fIter.hasNext()) {
+            var currFile = fIter.next();
+            fileList.push({
+              id: currFile.getId(),
+              name: currFile.getName(),
+              url: currFile.getUrl(),
+              size: currFile.getSize(),
+              dateCreated: currFile.getDateCreated().toISOString()
+            });
+          }
+        }
+      } catch (e) {
+        // Ignored
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        files: fileList
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Delete Drive File
+    if (data.action === 'deleteDriveFile') {
+      var fileIdToDel = data.fileId;
+      try {
+        DriveApp.getFileById(fileIdToDel).setTrashed(true);
+      } catch(e) {}
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success'
       })).setMimeType(ContentService.MimeType.JSON);
     }
     

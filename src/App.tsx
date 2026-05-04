@@ -72,6 +72,7 @@ import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template,
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
 import DataListKlaimView, { DataListKlaimViewRef } from './components/DataListKlaimView';
+import DataListWarehouseView, { DataListWarehouseViewRef } from './components/DataListWarehouseView';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
@@ -1011,6 +1012,8 @@ export default function App() {
   const [dataLinks, setDataLinks] = useState<DataListLink[]>([]);
   const [dataJadwal, setDataJadwal] = useState<DataListJadwal[]>([]);
   const [dataKlaim, setDataKlaim] = useState<DataListKlaim[]>([]);
+  const [dataWarehouse, setDataWarehouse] = useState<any[]>([]);
+  const [isWarehouseDataLoaded, setIsWarehouseDataLoaded] = useState(false);
   const [metadataOptions, setMetadataOptions] = useState({
     categories: [] as string[],
     brands: [] as string[],
@@ -1152,23 +1155,26 @@ export default function App() {
   });
 
   const handleExportData = () => {
-    const headers = ['Task ID', 'Title', 'Description', 'Status', 'Priority', 'Assignee', 'Category', 'Brand', 'Requestor', 'Division', 'Request Date', 'Due Date', 'Created At'];
+    const headers = ['Task ID', 'Display ID', 'Title', 'Status', 'Priority', 'Assignee', 'Category', 'Brand', 'Due Date', 'Created At', 'Request Date', 'Description', 'Created By', 'Requestor', 'Division'];
     
     const rows = filteredTasks.map(task => {
+      const displayId = task.display_id || `IC-${task.id}`;
       return [
-        task.display_id || `IC-${task.id}`,
+        task.id,
+        displayId,
         `"${task.title.replace(/"/g, '""')}"`,
-        `"${stripHtml(task.description || '').replace(/"/g, '""')}"`,
         task.status,
         task.priority,
         task.assignee || 'Unassigned',
         task.category || '',
         task.brand || '',
-        task.requestor || '',
-        task.division || '',
-        task.request_date || '',
-        task.due_date || '',
-        task.created_at ? new Date(task.created_at).toISOString().split('T')[0] : ''
+        task.due_date ? task.due_date.split('T')[0] : '',
+        task.created_at ? new Date(task.created_at).toISOString().split('T')[0] : '',
+        task.request_date ? task.request_date.split('T')[0] : '',
+        `"${stripHtml(task.description || '').replace(/"/g, '""')}"`,
+        `"${(task.authorName || '').replace(/"/g, '""')}"`,
+        `"${(task.requestor || '').replace(/"/g, '""')}"`,
+        `"${(task.division || '').replace(/"/g, '""')}"`
       ].join(',');
     });
 
@@ -1232,7 +1238,9 @@ export default function App() {
             };
 
             // Parse optional advanced fields overrides securely
-            if (row['Task ID'] || row['display_id']) taskData.display_id = row['Task ID'] || row['display_id'];
+            if (row['Display ID'] || row['display_id'] || row['Task ID']) {
+              taskData.display_id = row['Display ID'] || row['display_id'] || row['Task ID'];
+            }
             if (row['Created By'] || row['authorName']) taskData.authorName = row['Created By'] || row['authorName'];
             if (row['authorId']) taskData.authorId = row['authorId'];
             if (row['task_number']) taskData.task_number = parseInt(row['task_number'], 10);
@@ -1447,6 +1455,39 @@ export default function App() {
       unsubscribeLogs();
       unsubscribeMeta();
     };
+  }, [currentUser]);
+
+  const [isRefreshingWarehouse, setIsRefreshingWarehouse] = useState(false);
+
+  const fetchWarehouseData = async (force = false) => {
+    if ((isWarehouseDataLoaded && !force && dataWarehouse.length > 0) || !currentUser) return;
+    if (force) setIsRefreshingWarehouse(true);
+    try {
+      const res = await apiFetch('/api/gas-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'fetchWarehouseData',
+          sheetId: '1_rHOUu6u4A_tpP7ScrdgQ6iVmijijB2mCHXTSQ6t1Bg', 
+          sheetName: 'Cek_status_WH'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.data) {
+          setDataWarehouse(data.data);
+          setIsWarehouseDataLoaded(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch warehouse data:', error);
+    } finally {
+      if (force) setIsRefreshingWarehouse(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWarehouseData();
   }, [currentUser]);
 
   const updateBackupConfig = async (config: { enabled: boolean; intervalMinutes: number }) => {
@@ -2592,12 +2633,12 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
-              {['tasks', 'data-list-link', 'data-list-jadwal', 'data-list-klaim'].includes(currentView) && (
+              {['tasks', 'data-list-link', 'data-list-jadwal', 'data-list-klaim', 'data-list-warehouse'].includes(currentView) && (
                 <div className="relative hidden md:block max-w-md w-full ml-4">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
                   <input 
                     type="text" 
-                    placeholder={currentView === 'data-list-jadwal' ? 'Search jadwal...' : currentView === 'data-list-link' ? 'Search links...' : currentView === 'data-list-klaim' ? 'Search klaim...' : 'Search tasks...'}
+                    placeholder={currentView === 'data-list-jadwal' ? 'Search jadwal...' : currentView === 'data-list-link' ? 'Search links...' : currentView === 'data-list-klaim' ? 'Search klaim...' : currentView === 'data-list-warehouse' ? 'Search warehouse...' : 'Search tasks...'}
                     className="pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-full text-[var(--text-primary)] transition-all"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -3155,6 +3196,15 @@ export default function App() {
             searchQuery={searchQuery}
             onClearSearch={() => setSearchQuery('')}
             metadataOptions={metadataOptions}
+          />
+        ) : currentView === 'data-list-warehouse' ? (
+          <DataListWarehouseView
+            dataWarehouse={dataWarehouse}
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery('')}
+            currentUser={currentUserName}
+            onRefresh={() => fetchWarehouseData(true)}
+            isRefreshing={isRefreshingWarehouse}
           />
         ) : currentView.startsWith('data-list-') ? (
           <div className="flex-1 flex flex-col p-6 bg-[var(--bg-body)]">

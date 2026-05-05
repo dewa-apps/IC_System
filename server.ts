@@ -59,7 +59,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Webhook endpoint to receive emails from Google Apps Script
-  app.post("/api/webhooks/email-task", async (req, res) => {
+  app.post(["/api/webhooks/email-task", "/IC_System/api/webhooks/email-task"], async (req, res) => {
     try {
       const { secret, taskData } = req.body;
       
@@ -169,7 +169,7 @@ async function startServer() {
   });
 
   // GAS proxy endpoint
-  app.post("/api/gas-proxy", async (req, res) => {
+  app.post(["/api/gas-proxy", "/IC_System/api/gas-proxy"], async (req, res) => {
     try {
       const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
       

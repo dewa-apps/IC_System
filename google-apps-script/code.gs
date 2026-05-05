@@ -321,7 +321,7 @@ function doPost(e) {
     }
 
     // Jika request adalah untuk upload file
-    if (data.action === 'uploadFile' || data.base64) {
+    if (data.action === 'uploadFile') {
       var fileData = data.base64; 
       var fileName = data.fileName;
       var mimeType = data.mimeType;

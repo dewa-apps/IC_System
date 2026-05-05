@@ -78,6 +78,7 @@ import SettingsView from './components/SettingsView';
 import AuditLogView from './components/AuditLogView';
 import RichTextEditor from './components/RichTextEditor';
 import GanttView from './components/GanttView';
+import ChatWidget from './components/ChatWidget';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -3345,6 +3346,17 @@ export default function App() {
           </div>
         )}
         </main>
+        
+        {currentUser && currentUser.email && (
+          <ChatWidget 
+            tasks={tasks}
+            dataJadwal={dataJadwal}
+            dataKlaim={dataKlaim}
+            dataLinks={dataLinks}
+            dataWarehouse={dataWarehouse}
+            currentUser={currentUser.email}
+          />
+        )}
           </>
         )}
       </div>

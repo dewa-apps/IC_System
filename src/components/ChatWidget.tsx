@@ -40,9 +40,11 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const isTypingRef = useRef(false);
+  const isDragging = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatSessionRef = useRef<Chat | null>(null);
-
+  
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
@@ -131,12 +133,20 @@ Be concise and helpful. Format your response in Markdown.`;
 
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--accent-color)] text-[var(--text-on-accent)] rounded-full shadow-lg flex items-center justify-center hover:bg-[var(--accent-hover)] hover:scale-105 transition-all z-40"
+      <motion.button
+        drag
+        dragMomentum={false}
+        onDragStart={() => { isDragging.current = true; }}
+        onDragEnd={() => { 
+          setTimeout(() => { isDragging.current = false; }, 100);
+        }}
+        onClick={(e) => {
+          if (!isDragging.current) setIsOpen(true);
+        }}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--accent-color)] text-[var(--text-on-accent)] rounded-full shadow-lg flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-[var(--accent-hover)] transition-colors z-40"
       >
         <MessageSquare className="w-6 h-6" />
-      </button>
+      </motion.button>
 
       <AnimatePresence>
         {isOpen && (

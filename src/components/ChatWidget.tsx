@@ -161,7 +161,7 @@ Be concise and helpful. Format your response in Markdown.`;
             <div className="px-4 py-3 bg-[var(--accent-color)] text-[var(--text-on-accent)] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Bot className="w-5 h-5" />
-                <span className="font-semibold">AI Assistant</span>
+                <span className="font-semibold">ICAI - AI Assistant</span>
               </div>
               <div className="flex items-center gap-1">
                 <button

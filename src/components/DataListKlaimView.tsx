@@ -1061,7 +1061,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     disabled={p === '...'}
                     className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${
                       p === currentPage
-                        ? 'bg-[var(--accent-color)] text-white'
+                        ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]'
                         : p === '...'
                         ? 'text-[var(--text-muted)] cursor-default'
                         : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)] cursor-pointer'

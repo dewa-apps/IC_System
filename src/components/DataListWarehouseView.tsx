@@ -346,14 +346,15 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
                           e.preventDefault();
                           e.stopPropagation();
                           isResizingRef.current = true;
-                          setResizingCol({ key, startX: e.clientX, startWidth: colWidths[key] });
+                          const startWidth = colWidths[key];
+                          setResizingCol({ key, startX: e.clientX, startWidth });
                           
                           const handleMouseMove = (moveEvent: MouseEvent) => {
                             if (!isResizingRef.current) return;
                             const diff = moveEvent.clientX - e.clientX;
                             setColWidths(prev => ({
                               ...prev,
-                              [key]: Math.max(50, prev[key] + diff) // Min width 50px
+                              [key]: Math.max(50, startWidth + diff) // Min width 50px
                             }));
                           };
                           
@@ -417,70 +418,57 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
           </div>
 
           {/* Pagination Footer */}
-          <div className="bg-[var(--bg-surface)] border-t border-[var(--border-color)] px-4 md:px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 sticky bottom-0 z-10 shrink-0 shadow-[0_-1px_3px_rgba(0,0,0,0.05)]">
-            <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide shrink-0">
-               <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm text-[var(--text-secondary)] whitespace-nowrap">Rows per page:</span>
-                  <select
-                     value={rowsPerPage}
-                     onChange={(e) => {
-                       setRowsPerPage(Number(e.target.value));
-                       setCurrentPage(1);
-                     }}
-                     className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] text-[var(--text-primary)]"
-                   >
-                     <option value={20}>20</option>
-                     <option value={50}>50</option>
-                     <option value={100}>100</option>
+          {filteredData.length > 0 && (
+            <div className="px-4 py-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[var(--text-muted)]">Show</span>
+                  <select 
+                    value={rowsPerPage}
+                    onChange={(e) => {
+                      setRowsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-[var(--border-focus)]"
+                  >
+                    {[10, 20, 50, 100].map(val => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
                   </select>
-               </div>
-               <span className="text-sm text-[var(--text-secondary)] shrink-0 hidden md:inline">
-                 Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length} entries
-               </span>
+                  <span className="text-xs text-[var(--text-muted)]">per page</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button 
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-1">
+                  {getPageNumbers(currentPage, totalPages).map((page, index) => (
+                    <button
+                      key={`${page}-${index}`}
+                      disabled={page === '...'}
+                      onClick={() => page !== '...' && setCurrentPage(Number(page))}
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded transition-all ${currentPage === page ? 'bg-[var(--accent-color)] text-[var(--text-on-accent)]' : page === '...' ? 'text-[var(--text-muted)] cursor-default' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary-hover)] cursor-pointer'}`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="p-1 rounded hover:bg-[var(--bg-primary)] disabled:opacity-30 transition-colors text-[var(--text-secondary)]"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            
-            <div className="flex items-center justify-between w-full md:w-auto shrink-0 gap-2">
-              <span className="text-sm text-[var(--text-secondary)] md:hidden">
-                 {(currentPage - 1) * rowsPerPage + 1} - {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length}
-               </span>
-               <div className="flex items-center gap-1">
-                 <button
-                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                   disabled={currentPage === 1}
-                   className="p-1.5 rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed text-[var(--text-secondary)]"
-                 >
-                   <ChevronLeft className="w-5 h-5" />
-                 </button>
-                 
-                 <div className="hidden md:flex items-center gap-1">
-                   {getPageNumbers(currentPage, totalPages).map((p, i) => (
-                      <button
-                        key={i}
-                        onClick={() => typeof p === 'number' && setCurrentPage(p)}
-                        disabled={p === '...'}
-                        className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
-                          p === currentPage 
-                            ? 'bg-[var(--accent-color)] text-white' 
-                            : p === '...'
-                              ? 'text-[var(--text-muted)] cursor-default'
-                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                   ))}
-                 </div>
-                 
-                 <button
-                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                   disabled={currentPage === totalPages}
-                   className="p-1.5 rounded hover:bg-[var(--bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed text-[var(--text-secondary)]"
-                 >
-                   <ChevronRight className="w-5 h-5" />
-                 </button>
-               </div>
-            </div>
-          </div>
+          )}
           </>
         )}
       </div>

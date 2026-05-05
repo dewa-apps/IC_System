@@ -132,6 +132,19 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
       .slice(0, 10); // Top 10 assignees
   }, [filteredTasks]);
 
+  const categoryData = useMemo(() => {
+    const counts = filteredTasks.reduce((acc, task) => {
+      const category = task.category || 'Uncategorized';
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10); // Top 10 categories
+  }, [filteredTasks]);
+
   const handleExportDataWrapper = () => {
     const headers = ['Task ID', 'Title', 'Description', 'Status', 'Priority', 'Assignee', 'Category', 'Brand', 'Request Date', 'Due Date', 'Created At'];
     
@@ -343,7 +356,7 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
         </div>
 
         {/* Assignee Chart */}
-        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-color)] shadow-sm lg:col-span-2">
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-color)] shadow-sm">
           <h3 className="text-lg font-bold text-[var(--text-primary)] mb-6">Tasks by Assignee (Top 10)</h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -358,6 +371,29 @@ export default function ReportsView({ tasks }: ReportsViewProps) {
                 <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]}>
                   {assigneeData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Category Chart */}
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-color)] shadow-sm">
+          <h3 className="text-lg font-bold text-[var(--text-primary)] mb-6">Tasks by Category (Top 10)</h3>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={categoryData} layout="vertical" margin={{ left: 50 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
+                <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis dataKey="name" type="category" stroke="var(--text-secondary)" fontSize={12} tickLine={false} axisLine={false} width={100} />
+                <Tooltip 
+                  cursor={{ fill: 'var(--bg-secondary)' }}
+                  contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <Bar dataKey="value" fill="#ec4899" radius={[0, 4, 4, 0]}>
+                  {categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[(index + 1) % COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>

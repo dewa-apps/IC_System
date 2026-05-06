@@ -75,6 +75,10 @@ Be concise and helpful. Format your response in Markdown.`;
     res.end();
   } catch (error: any) {
     console.error("Chat proxy failed", error);
-    res.status(500).json({ error: error.message });
+    if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
+       res.status(400).json({ error: "The GEMINI_API_KEY configured in Vercel is invalid. Please get a valid API key from https://aistudio.google.com/ and update your Vercel Environment Variables." });
+    } else {
+       res.status(500).json({ error: error.message || 'Internal server error' });
+    }
   }
 }

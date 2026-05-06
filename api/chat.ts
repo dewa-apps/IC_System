@@ -1,7 +1,19 @@
 import { GoogleGenAI } from '@google/genai';
 
 export default async function handler(req: any, res: any) {
-  // CORS if needed, but not strictly required if same-origin on Vercel
+  // CORS configuration
+  res.setHeader('Access-Control-Allow-Credentials', true)
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT')
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  )
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
   
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -33,20 +45,22 @@ If the user asks a question about schedules (jadwal) this month, look at the Jad
 If asked about tasks, look at the Tasks data.
 Be concise and helpful. Format your response in Markdown.`;
 
-    const chat = ai.chats.create({
+    const chatOptions: any = {
       model: "gemini-3.1-pro-preview",
       config: {
         systemInstruction: systemPrompt,
         temperature: 0.2
       }
-    });
+    };
 
     if (history && history.length > 0) {
-      chat.history = history.map((m: any) => ({
-        role: m.role,
+      chatOptions.history = history.map((m: any) => ({
+        role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.text }]
       }));
     }
+
+    const chat = ai.chats.create(chatOptions);
 
     const response = await chat.sendMessageStream({ message });
     

@@ -77,9 +77,16 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
         }
       };
 
+      let apiUrl = '/api/chat';
+      if (import.meta.env.VITE_API_URL) {
+        apiUrl = `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/chat`;
+      } else if (window.location.hostname.includes('github.io')) {
+        throw new Error("API requests on GitHub Pages require VITE_API_URL environment variable to be set to your Vercel domain, OR just access your Vercel URL directly instead of GitHub Pages.");
+      }
+
       let response;
       try {
-        response = await fetch('/api/chat', {
+        response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

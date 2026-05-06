@@ -77,16 +77,26 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
         }
       };
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      let response;
+      try {
+        response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+      } catch (err: any) {
+        throw new Error("Unable to reach the backend (/api/chat). Please ensure your environment is running the backend correctly.");
+      }
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        let errMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData.error) errMessage = errData.error;
+        } catch(e) {}
+        throw new Error(errMessage);
       }
 
       if (!response.body) throw new Error("No response body");
@@ -110,9 +120,10 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, { role: 'model', text: 'Error: Could not process your request at the moment.' }]);
+      const errorMessage = error?.message || 'Could not process your request at the moment.';
+      setMessages(prev => [...prev, { role: 'model', text: `Error: ${errorMessage}` }]);
     } finally {
       setIsTyping(false);
     }

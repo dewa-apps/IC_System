@@ -38,15 +38,12 @@ Be concise and helpful. Format your response in Markdown.`;
       config: {
         systemInstruction: systemPrompt,
         temperature: 0.2
-      }
-    });
-
-    if (history && history.length > 0) {
-      chat.history = history.map((m: any) => ({
+      },
+      history: history && history.length > 0 ? history.map((m: any) => ({
         role: m.role,
         parts: [{ text: m.text }]
-      }));
-    }
+      })) : undefined
+    });
 
     const response = await chat.sendMessageStream({ message });
     

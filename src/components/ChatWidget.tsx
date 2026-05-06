@@ -81,7 +81,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
       if (import.meta.env.VITE_API_URL) {
         apiUrl = `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/chat`;
       } else if (window.location.hostname.includes('github.io')) {
-        throw new Error("API requests on GitHub Pages require VITE_API_URL environment variable to be set to your Vercel domain, OR just access your Vercel URL directly instead of GitHub Pages.");
+        apiUrl = 'https://ic-system.vercel.app/api/chat';
       }
 
       let response;

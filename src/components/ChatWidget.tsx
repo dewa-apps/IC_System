@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2 } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2, CloudDownload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { Task, DataListLink, DataListJadwal, DataListKlaim } from '../types';
@@ -39,6 +39,8 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [driveData, setDriveData] = useState<any[]>([]);
+  const [isFetchingDrive, setIsFetchingDrive] = useState(false);
   const isTypingRef = useRef(false);
   const isDragging = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,35 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
   const handleClearHistory = () => {
     const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` } as Message];
     setMessages(defaultMsg);
+  };
+
+  const handleFetchDriveInfo = async () => {
+    setIsFetchingDrive(true);
+    try {
+      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+      const payload = {
+        action: 'getDriveFolderText',
+        folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
+      };
+
+      const response = await fetch(gasUrl, {
+        method: "POST",
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Prevent CORS preflight for GAS
+        body: JSON.stringify(payload)
+      });
+      const resData = await response.json();
+      
+      if (resData.status === 'success') {
+        setDriveData(resData.data);
+        setMessages(prev => [...prev, { role: 'model', text: `✅ Berhasil mengekstrak ${resData.data.length} dokumen dari folder Drive untuk referensi tambahan.` }]);
+      } else {
+        throw new Error(resData.message || 'Unknown error');
+      }
+    } catch (e: any) {
+      console.error(e);
+      setMessages(prev => [...prev, { role: 'model', text: `❌ Gagal menarik referensi folder Drive: ${e.message}` }]);
+    }
+    setIsFetchingDrive(false);
   };
 
   const handleSend = async () => {
@@ -73,7 +104,8 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
           jadwal: dataJadwal,
           klaim: dataKlaim,
           links: dataLinks,
-          warehouse: dataWarehouse
+          warehouse: dataWarehouse,
+          driveData: driveData
         }
       };
 
@@ -174,6 +206,14 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
                 <span className="font-semibold">ICAI - AI Assistant</span>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFetchDriveInfo}
+                  disabled={isFetchingDrive}
+                  className="p-1.5 hover:bg-white/20 rounded-full transition-colors flex items-center justify-center relative disabled:cursor-not-allowed"
+                  title="Sinkronisasi Data Drive (Referensial AI)"
+                >
+                  {isFetchingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudDownload className="w-4 h-4" />}
+                </button>
                 <button
                   onClick={handleClearHistory}
                   className="p-1.5 hover:bg-white/20 rounded-full transition-colors flex items-center justify-center group relative"

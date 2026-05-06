@@ -40,9 +40,11 @@ Here is the data, represented as JSON arrays:
 - Klaim: ${JSON.stringify(contextData.klaim)}
 - Links: ${JSON.stringify(contextData.links)}
 - Warehouse: ${JSON.stringify(contextData.warehouse)}
+- Drive Documents: ${JSON.stringify(contextData.driveData)}
 
 If the user asks a question about schedules (jadwal) this month, look at the Jadwal data.
 If asked about tasks, look at the Tasks data.
+If the user asks about knowledge base or manual docs, check the Drive Documents.
 Be concise and helpful. Format your response in Markdown.`;
 
     const chatOptions: any = {

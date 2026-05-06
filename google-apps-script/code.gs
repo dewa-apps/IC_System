@@ -445,8 +445,74 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // Membaca konten teks dari file (Docs/Sheets) di dalam Drive Folder spesifik untuk diolah AI
+    if (data.action === 'getDriveFolderText') {
+      var folderIdForAI = data.folderId;
+      var fileDataList = [];
+      
+      try {
+        var aiFolder = DriveApp.getFolderById(folderIdForAI);
+        var aiFiles = aiFolder.getFiles();
+        
+        while (aiFiles.hasNext()) {
+          var aiFile = aiFiles.next();
+          var aiMimeType = aiFile.getMimeType();
+          var aiName = aiFile.getName();
+          var aiContent = "";
+          
+          try {
+            if (aiMimeType === MimeType.GOOGLE_DOCS) {
+              aiContent = DocumentApp.openById(aiFile.getId()).getBody().getText();
+            } else if (aiMimeType === MimeType.GOOGLE_SHEETS) {
+              var aiSpreadsheet = SpreadsheetApp.openById(aiFile.getId());
+              var aiSheets = aiSpreadsheet.getSheets();
+              var allAiData = [];
+              aiSheets.forEach(function(s) {
+                var sVals = s.getDataRange().getDisplayValues();
+                if(sVals.length > 0) {
+                  allAiData.push("Sheet: " + s.getName() + " | Data: " + JSON.stringify(sVals));
+                }
+              });
+              aiContent = allAiData.join("\n");
+            } else if (aiMimeType === MimeType.PLAIN_TEXT || aiMimeType === MimeType.CSV) {
+              aiContent = aiFile.getBlob().getDataAsString();
+            } else {
+              aiContent = "File ini ada (" + aiName + ") namun format (" + aiMimeType + ") tidak direkomendasikan untuk dibaca teksnya otomatis. Gunakan Google Docs atau Google Sheets.";
+            }
+            
+            // Batasi panjang untuk mencegah overload memory (maks 15000 karakter per file)
+            if (aiContent.length > 15000) {
+              aiContent = aiContent.substring(0, 15000) + "... [terpotong]";
+            }
+            
+            fileDataList.push({
+              fileName: aiName,
+              content: aiContent
+            });
+            
+          } catch(errAIFetch) {
+            fileDataList.push({
+              fileName: aiName,
+              error: errAIFetch.toString()
+            });
+          }
+        }
+      } catch(folderErr) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'error',
+          message: folderErr.toString()
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        data: fileDataList
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // List Warehouse Files
     if (data.action === 'listWarehouseFiles') {
+
       var dirUrl = data.folderUrl;
       var fileList = [];
       try {

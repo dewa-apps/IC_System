@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Chat } from '@google/genai';
 import Markdown from 'react-markdown';
 import { Task, DataListLink, DataListJadwal, DataListKlaim } from '../types';
 
@@ -43,59 +42,15 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
   const isTypingRef = useRef(false);
   const isDragging = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionRef = useRef<Chat | null>(null);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
   }, [messages, CHAT_STORAGE_KEY]);
 
-  const initChat = () => {
-    if (chatSessionRef.current) return chatSessionRef.current;
-    
-    // Initialize Google Gen AI
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
-    // Create system prompt with context data
-    const systemPrompt = `You are an AI Assistant for the IC System application.
-The user's email is: ${currentUser}. You can address them by their first name if appropriate.
-You have access to the following application data. Please use this data to answer user questions factually.
-
-Here is the data, represented as JSON arrays:
-- Tasks: ${JSON.stringify(tasks.map(t => ({ id: t.display_id, title: t.title, status: t.status, priority: t.priority, assignee: t.assignee, due_date: t.due_date })))}
-- Jadwal: ${JSON.stringify(dataJadwal)}
-- Klaim: ${JSON.stringify(dataKlaim)}
-- Links: ${JSON.stringify(dataLinks)}
-- Warehouse: ${JSON.stringify(dataWarehouse)}
-
-If the user asks a question about schedules (jadwal) this month, look at the Jadwal data.
-If asked about tasks, look at the Tasks data.
-Be concise and helpful. Format your response in Markdown.`;
-
-    const chat = ai.chats.create({
-      model: "gemini-3.1-pro-preview",
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.2
-      }
-    });
-
-    // Load history into chat session so it retains context
-    if (messages.length > 1) {
-       chat.history = messages.map(m => ({
-         role: m.role,
-         parts: [{ text: m.text }]
-       }));
-    }
-
-    chatSessionRef.current = chat;
-    return chat;
-  };
-
   const handleClearHistory = () => {
     const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` } as Message];
     setMessages(defaultMsg);
-    chatSessionRef.current = null; // force re-init
   };
 
   const handleSend = async () => {
@@ -107,15 +62,47 @@ Be concise and helpful. Format your response in Markdown.`;
     setIsTyping(true);
 
     try {
-      const chat = initChat();
-      const response = await chat.sendMessageStream({ message: userMessage });
+      const simplifiedHistory = messages.length > 1 ? messages.slice(1) : [];
       
+      const payload = {
+        message: userMessage,
+        history: simplifiedHistory,
+        currentUser,
+        contextData: {
+          tasks: tasks.map(t => ({ id: t.display_id, title: t.title, status: t.status, priority: t.priority, assignee: t.assignee, due_date: t.due_date })),
+          jadwal: dataJadwal,
+          klaim: dataKlaim,
+          links: dataLinks,
+          warehouse: dataWarehouse
+        }
+      };
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
       let fullResponse = '';
-      setMessages(prev => [...prev, { role: 'model', text: '' }]);
       
-      for await (const chunk of response) {
-        if (chunk.text) {
-          fullResponse += chunk.text;
+      setMessages(prev => [...prev, { role: 'model', text: '' }]);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const textChunk = decoder.decode(value, { stream: true });
+        if (textChunk) {
+          fullResponse += textChunk;
           setMessages(prev => {
             const newMsgs = [...prev];
             newMsgs[newMsgs.length - 1].text = fullResponse;

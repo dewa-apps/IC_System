@@ -34,7 +34,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
       }
     }
     return [
-      { role: 'model', text: `Hi ${currentUser.split('@')[0]}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` }
+      { role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` }
     ];
   });
 
@@ -93,7 +93,7 @@ Be concise and helpful. Format your response in Markdown.`;
   };
 
   const handleClearHistory = () => {
-    const defaultMsg = [{ role: 'model', text: `Hi ${currentUser.split('@')[0]}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` } as Message];
+    const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` } as Message];
     setMessages(defaultMsg);
     chatSessionRef.current = null; // force re-init
   };
@@ -138,10 +138,15 @@ Be concise and helpful. Format your response in Markdown.`;
         dragMomentum={false}
         onDragStart={() => { isDragging.current = true; }}
         onDragEnd={() => { 
-          setTimeout(() => { isDragging.current = false; }, 100);
+          setTimeout(() => { isDragging.current = false; }, 200);
         }}
         onClick={(e) => {
-          if (!isDragging.current) setIsOpen(true);
+          if (isDragging.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          setIsOpen(true);
         }}
         className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--accent-color)] text-[var(--text-on-accent)] rounded-full shadow-lg flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-[var(--accent-hover)] transition-colors z-40"
       >

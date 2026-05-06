@@ -220,7 +220,7 @@ If asked about tasks, look at the Tasks data.
 Be concise and helpful. Format your response in Markdown.`;
 
       const chatOptions: any = {
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-2.5-flash",
         config: {
           systemInstruction: systemPrompt,
           temperature: 0.2
@@ -249,7 +249,13 @@ Be concise and helpful. Format your response in Markdown.`;
       res.end();
     } catch (error: any) {
       console.error("Chat proxy failed", error);
-      res.status(500).json({ error: error.message });
+      if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
+         res.status(400).json({ error: "The GEMINI_API_KEY is invalid. Please get a valid API key from https://aistudio.google.com/." });
+      } else if (error.message?.includes('429') || error.message?.includes('exceeded your current quota') || error.status === 429) {
+         res.status(429).json({ error: "You have exceeded your Gemini API quota. Please check your plan (https://ai.google.dev/gemini-api/docs/rate-limits) or try again later." });
+      } else {
+         res.status(500).json({ error: error.message || 'Internal server error' });
+      }
     }
   });
 

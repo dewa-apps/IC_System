@@ -3346,6 +3346,8 @@ export default function App() {
           </div>
         )}
         </main>
+          </>
+        )}
         
         {currentUser && currentUser.email && (
           <ChatWidget 
@@ -3356,8 +3358,6 @@ export default function App() {
             dataWarehouse={dataWarehouse}
             currentUser={currentUser.email}
           />
-        )}
-          </>
         )}
       </div>
 

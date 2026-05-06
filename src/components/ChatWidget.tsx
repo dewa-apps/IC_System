@@ -254,7 +254,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
                       {msg.role === 'user' ? (
                         <p className="text-sm">{msg.text}</p>
                       ) : (
-                        <div className="text-sm markdown-body prose dark:prose-invert max-w-none">
+                        <div className="text-sm prose dark:prose-invert max-w-none prose-p:text-[var(--text-primary)] prose-headings:text-[var(--text-primary)] prose-strong:text-[var(--text-primary)] prose-a:text-[var(--accent-color)] prose-li:text-[var(--text-primary)] text-[var(--text-primary)]">
                           <Markdown>{msg.text}</Markdown>
                         </div>
                       )}

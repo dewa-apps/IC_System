@@ -114,57 +114,74 @@ async function startServer() {
         console.error("Error finding user for authorName", e);
       }
 
+      const debugInfo: any = { 
+        received_parent_id: taskData.parent_task_id, 
+        parent_id_type: typeof taskData.parent_task_id 
+      };
+
       // Check if this task should be appended as a subtask to an existing task
       if (taskData.parent_task_id) {
         const parentId = String(taskData.parent_task_id).trim().toUpperCase();
-        const parentTasks = await db.collection("tasks")
-          .where("display_id", "==", parentId)
-          .limit(1)
-          .get();
-          
-        if (!parentTasks.empty) {
-          const parentDoc = parentTasks.docs[0];
-          const parentData = parentDoc.data();
-          const existingSubtasks = parentData.subtasks || [];
-          
-          // Prevent duplicates by checking if subtask with same title exists
-          const isDuplicate = existingSubtasks.some(st => st.title === taskData.title);
-          
-          if (!isDuplicate) {
-            const newSubtask = {
-              id: Math.random().toString(36).substr(2, 9),
-              title: taskData.title,
-              completed: false,
-              due_date: taskData.due_date || ''
-            };
+        debugInfo.parsed_parent_id = parentId;
+        
+        try {
+          const parentTasks = await db.collection("tasks")
+            .where("display_id", "==", parentId)
+            .limit(1)
+            .get();
             
-            await parentDoc.ref.update({
-              subtasks: [...existingSubtasks, newSubtask],
-              updated_at: admin.firestore.FieldValue.serverTimestamp()
-            });
+          debugInfo.is_parent_empty = parentTasks.empty;
             
-            // Log activity for adding subtask
-            try {
-              await db.collection("activity_log").add({
-                task_id: parentDoc.id,
-                user: authorName,
-                action: "Added Subtask via Email",
-                details: `Title: ${newSubtask.title}`,
-                created_at: admin.firestore.FieldValue.serverTimestamp()
+          if (!parentTasks.empty) {
+            const parentDoc = parentTasks.docs[0];
+            const parentData = parentDoc.data();
+            const existingSubtasks = parentData.subtasks || [];
+            
+            // Prevent duplicates by checking if subtask with same title exists
+            const isDuplicate = existingSubtasks.some((st: any) => st.title === taskData.title);
+            
+            if (!isDuplicate) {
+              const newSubtask = {
+                id: Math.random().toString(36).substr(2, 9),
+                title: taskData.title,
+                completed: false,
+                due_date: taskData.due_date || ''
+              };
+              
+              await parentDoc.ref.update({
+                subtasks: [...existingSubtasks, newSubtask],
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
               });
-            } catch (logError) {
-              console.error("Error creating activity log for subtask:", logError);
+              
+              // Log activity for adding subtask
+              try {
+                await db.collection("activity_log").add({
+                  task_id: parentDoc.id,
+                  user: authorName,
+                  action: "Added Subtask via Email",
+                  details: `Title: ${newSubtask.title}`,
+                  created_at: admin.firestore.FieldValue.serverTimestamp()
+                });
+              } catch (logError) {
+                console.error("Error creating activity log for subtask:", logError);
+              }
             }
+            
+            return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id, debug: debugInfo });
+          } else {
+            // Jika tidak ditemukan, gagalkan secara tegas agar pengguna tahu!
+            return res.status(200).json({ 
+              success: false, 
+              message: `Gagal: Parent task ${parentId} tidak ditemukan di database. Pastikan ID Task sudah benar.`,
+              debug: debugInfo
+            });
           }
-          
-          return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id });
-        } else {
-          // If parent task is specified but not found, return an error so users know.
-          // Do NOT proceed to create a new task.
+        } catch (dbError: any) {
           return res.status(200).json({ 
-            success: false, 
-            message: `Gagal: Parent task ${parentId} tidak ditemukan di database. Pastikan ID Task sudah benar.` 
-          });
+              success: false, 
+              message: `Error querying database for parent ${parentId}: ${dbError.message}`,
+              debug: debugInfo
+            });
         }
       }
 
@@ -215,7 +232,7 @@ async function startServer() {
         console.error("Error creating activity log:", logError);
       }
 
-      return res.status(200).json({ success: true, id: result.id });
+      return res.status(200).json({ success: true, id: result.id, is_new_task: true, debug: debugInfo });
     } catch (error) {
       console.error("Error creating task from webhook:", error);
       return res.status(500).json({ error: String(error) });
@@ -315,7 +332,7 @@ Be concise and helpful. Format your response in Markdown.`;
     }
   });
 
-  // Vite middleware for development 
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

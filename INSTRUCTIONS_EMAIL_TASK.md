@@ -53,7 +53,7 @@ function processEmailTasks() {
   // URL untuk endpoint webhook di server kita
   // Ganti dengan Shared App URL jika Anda sudah mem-"Publish" atau membagikan (Share) pembaruan terbaru.
   // Untuk pengetesan (Development), gunakan Dev URL Anda.
-  var webhookUrl = "https://ais-dev-lt4g2fgwfme3g74wdhaeyg-48045594560.asia-southeast1.run.app/api/webhooks/email-task";
+  var webhookUrl = "https://ic-system.vercel.app/api/webhooks/email-task";
   var secretKey = "SIRCLO_INVENTORY_SECRET_TASK";
   
   for (var i = 0; i < threads.length; i++) {
@@ -107,9 +107,43 @@ function processEmailTasks() {
     // Ambil string di sebelah #task#
     var bodyText = taskMessage.getPlainBody();
     var description = "";
-    var match = bodyText.match(/#task#(.*)/);
+    var match = bodyText.match(/#task#(.*?)(?:\n|$)/);
     if (match && match[1]) {
       description = match[1].trim(); 
+    }
+    
+    // Ambil category dari #category#
+    var category = "General";
+    var categoryMatch = bodyText.match(/#category#(.*?)(?:\n|$)/i);
+    if (categoryMatch && categoryMatch[1]) {
+      category = categoryMatch[1].trim();
+    }
+
+    // Ambil priority dari #priority#
+    var priority = "LOW";
+    var priorityMatch = bodyText.match(/#priority#(.*?)(?:\n|$)/i);
+    if (priorityMatch && priorityMatch[1]) {
+      priority = priorityMatch[1].trim().toUpperCase();
+      var validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+      if (validPriorities.indexOf(priority) === -1) {
+        priority = "LOW";
+      }
+    }
+    
+    // Ambil subtasks dari baris yang mengandung #subtask#
+    var subtasks = [];
+    var subtaskMatches = bodyText.match(/#subtask#(.*?)(?:\n|$)/g);
+    if (subtaskMatches) {
+      for (var s = 0; s < subtaskMatches.length; s++) {
+        var subTitle = subtaskMatches[s].replace(/#subtask#/, "").trim();
+        if (subTitle) {
+          subtasks.push({
+            id: Utilities.getUuid(),
+            title: subTitle,
+            completed: false
+          });
+        }
+      }
     }
     
     // Ambil requester dan creator
@@ -125,12 +159,14 @@ function processEmailTasks() {
       title: summary,
       description: description,
       status: "TODO",
-      priority: "LOW",
+      priority: priority,
+      category: category,
       requestor: requestorName,
       authorId: creatorName, 
       request_date: formatDateStr(requestDate),
       due_date: formatDateStr(dueDate),
-      email_thread_id: thread.getId()
+      email_thread_id: thread.getId(),
+      subtasks: subtasks
     };
     
     var payload = {

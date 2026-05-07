@@ -51,8 +51,8 @@ function processEmailTasks() {
   }
   
   // URL untuk endpoint webhook di server kita
-  // Ganti dengan Shared App URL jika Anda sudah mem-"Publish" atau membagikan (Share) pembaruan terbaru.
-  // Untuk pengetesan (Development), gunakan Dev URL Anda atau url vercel Anda (https://ic-system.vercel.app/api/webhooks/email-task).
+  // Karena script dijalankan dari luar (Apps Script), Anda harus menggunakan URL public (misalnya Vercel Anda).
+  // Jangan gunakan URL Dev AI Studio karena diproteksi oleh proxy autentikasi Google.
   var webhookUrl = "https://ic-system.vercel.app/api/webhooks/email-task";
   var secretKey = "SIRCLO_INVENTORY_SECRET_TASK";
   

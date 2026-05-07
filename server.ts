@@ -74,17 +74,6 @@ async function startServer() {
 
       const db = getDb();
       
-      // Duplicate check based on email thread id or message id
-      if (taskData.email_thread_id) {
-        const existingInfo = await db.collection("tasks")
-          .where("email_thread_id", "==", taskData.email_thread_id)
-          .limit(1)
-          .get();
-        if (!existingInfo.empty) {
-          return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
-        }
-      }
-
       // Generate sequence display_id
       const metadataRef = db.collection('metadata').doc('taskSequence');
       const newDisplayId = await db.runTransaction(async (transaction) => {
@@ -148,32 +137,50 @@ async function startServer() {
         if (!parentTasks.empty) {
           const parentDoc = parentTasks.docs[0];
           const parentData = parentDoc.data();
-          const newSubtask = {
-            id: Math.random().toString(36).substr(2, 9),
-            title: taskData.title,
-            completed: false,
-            due_date: taskData.due_date || ''
-          };
+          const existingSubtasks = parentData.subtasks || [];
           
-          await parentDoc.ref.update({
-            subtasks: [...(parentData.subtasks || []), newSubtask],
-            updated_at: admin.firestore.FieldValue.serverTimestamp()
-          });
+          // Prevent duplicates by checking if subtask with same title exists
+          const isDuplicate = existingSubtasks.some(st => st.title === taskData.title);
           
-          // Log activity for adding subtask
-          try {
-            await db.collection("activity_log").add({
-              task_id: parentDoc.id,
-              user: authorName,
-              action: "Added Subtask via Email",
-              details: `Title: ${newSubtask.title}`,
-              created_at: admin.firestore.FieldValue.serverTimestamp()
+          if (!isDuplicate) {
+            const newSubtask = {
+              id: Math.random().toString(36).substr(2, 9),
+              title: taskData.title,
+              completed: false,
+              due_date: taskData.due_date || ''
+            };
+            
+            await parentDoc.ref.update({
+              subtasks: [...existingSubtasks, newSubtask],
+              updated_at: admin.firestore.FieldValue.serverTimestamp()
             });
-          } catch (logError) {
-            console.error("Error creating activity log for subtask:", logError);
+            
+            // Log activity for adding subtask
+            try {
+              await db.collection("activity_log").add({
+                task_id: parentDoc.id,
+                user: authorName,
+                action: "Added Subtask via Email",
+                details: `Title: ${newSubtask.title}`,
+                created_at: admin.firestore.FieldValue.serverTimestamp()
+              });
+            } catch (logError) {
+              console.error("Error creating activity log for subtask:", logError);
+            }
           }
           
           return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id });
+        }
+      }
+
+      // Duplicate check based on email thread id or message id for main tasks
+      if (taskData.email_thread_id) {
+        const existingInfo = await db.collection("tasks")
+          .where("email_thread_id", "==", taskData.email_thread_id)
+          .limit(1)
+          .get();
+        if (!existingInfo.empty) {
+          return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
         }
       }
 

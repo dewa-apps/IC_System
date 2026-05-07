@@ -40,9 +40,9 @@ function processEmailTasks() {
     processedLabel = GmailApp.createLabel(labelName);
   }
 
-  // Cari thread yang ditujukan ke grup, ada #task#, dan BELUM dilabeli "IC-Task-Created"
+  // Cari thread yang ditujukan ke grup, ada #task# atau #parent_task# dan BELUM dilabeli
   // Ini termasuk email di Kotak Masuk (Inbox) maupun Terkirim (Sent)
-  var query = 'to:inventorycontrol@sirclo.com "#task#" -label:' + labelName;
+  var query = 'to:inventorycontrol@sirclo.com ("#task#" OR "#parent_task#") -label:' + labelName;
 
   var threads = GmailApp.search(query);
   
@@ -61,12 +61,12 @@ function processEmailTasks() {
     var messages = thread.getMessages();
     var firstMessage = messages[0];
     
-    // Cari pesan balasan mana yang menyertakan teks #task#
+    // Cari pesan balasan mana yang menyertakan teks #task# atau #parent_task#
     var taskMessage = null;
     var taskMessageIndex = -1;
     for (var j = messages.length - 1; j >= 0; j--) {
       var body = messages[j].getPlainBody() || messages[j].getBody();
-      if (body.indexOf("#task#") !== -1) {
+      if (body.indexOf("#task#") !== -1 || body.indexOf("#parent_task#") !== -1 || body.indexOf("#subtask#") !== -1) {
         taskMessage = messages[j];
         taskMessageIndex = j;
         break;

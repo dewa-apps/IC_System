@@ -315,7 +315,7 @@ Be concise and helpful. Format your response in Markdown.`;
     }
   });
 
-  // Vite middleware for development baru
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

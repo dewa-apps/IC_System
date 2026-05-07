@@ -33,7 +33,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
       }
     }
     return [
-      { role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` }
+      { role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! Saya ICAI, kamu bisa menanyakan apapun tentang Tasks, Jadwal, Kalim, Link atau Warehouse data. Tapi saya tidak bisa menerjemahkan Bahasa GOKU.` }
     ];
   });
 
@@ -51,7 +51,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
   }, [messages, CHAT_STORAGE_KEY]);
 
   const handleClearHistory = () => {
-    const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! I am the IC System Assistant. You can ask me anything about Tasks, Jadwal, Klaim, Links, or Warehouse data.` } as Message];
+    const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! Saya ICAI, kamu bisa menanyakan apapun tentang Tasks, Jadwal, Kalim, Link atau Warehouse data. Tapi saya tidak bisa menerjemahkan Bahasa GOKU .` } as Message];
     setMessages(defaultMsg);
   };
 

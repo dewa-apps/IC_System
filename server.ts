@@ -129,8 +129,9 @@ async function startServer() {
 
       // Check if this task should be appended as a subtask to an existing task
       if (taskData.parent_task_id) {
+        const parentId = String(taskData.parent_task_id).trim().toUpperCase();
         const parentTasks = await db.collection("tasks")
-          .where("display_id", "==", taskData.parent_task_id)
+          .where("display_id", "==", parentId)
           .limit(1)
           .get();
           
@@ -170,6 +171,13 @@ async function startServer() {
           }
           
           return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id });
+        } else {
+          // If parent task is specified but not found, return an error so users know.
+          // Do NOT proceed to create a new task.
+          return res.status(200).json({ 
+            success: false, 
+            message: `Gagal: Parent task ${parentId} tidak ditemukan di database. Pastikan ID Task sudah benar.` 
+          });
         }
       }
 

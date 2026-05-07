@@ -116,7 +116,15 @@ function processEmailTasks() {
     var parentTaskId = null;
     var parentMatch = bodyText.match(/#parent_task#\s*(.*?)(?:\r?\n|$)/i);
     if (parentMatch && parentMatch[1]) {
-      parentTaskId = parentMatch[1].trim();
+      var rawId = parentMatch[1].trim();
+      // Mengambil pola IC-XXXXX untuk menghindari teks tidak perlu ikut masuk
+      var exactMatch = rawId.match(/IC-\d+/i);
+      if (exactMatch) {
+        parentTaskId = exactMatch[0].toUpperCase();
+      } else {
+        parentTaskId = rawId.toUpperCase();
+      }
+      Logger.log("Ditemukan Parent Task ID: " + parentTaskId);
     }
     
     // Ambil category dari #category#
@@ -187,7 +195,8 @@ function processEmailTasks() {
       var options = {
         method: "post",
         contentType: "application/json",
-        payload: JSON.stringify(payload)
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
       };
       var response = UrlFetchApp.fetch(webhookUrl, options);
       var result = JSON.parse(response.getContentText());
@@ -196,6 +205,8 @@ function processEmailTasks() {
          Logger.log("Sukses ID: " + result.id);
          // Tandai dengan label agar script tidak mengeksekusinya lagi di menit berikutnya
          thread.addLabel(processedLabel);
+      } else {
+         Logger.log("Gagal memproses Task: " + result.message);
       }
     } catch (e) {
       Logger.log("Error Thread " + thread.getId() + " - " + e.toString());

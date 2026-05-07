@@ -199,14 +199,22 @@ function processEmailTasks() {
         muteHttpExceptions: true
       };
       var response = UrlFetchApp.fetch(webhookUrl, options);
-      var result = JSON.parse(response.getContentText());
-      
-      if (result.success) {
-         Logger.log("Sukses ID: " + result.id);
-         // Tandai dengan label agar script tidak mengeksekusinya lagi di menit berikutnya
-         thread.addLabel(processedLabel);
-      } else {
-         Logger.log("Gagal memproses Task: " + result.message);
+      var responseText = response.getContentText();
+      Logger.log("Response Backend: " + responseText);
+      try {
+        var result = JSON.parse(responseText);
+        if (result.success) {
+           Logger.log("Sukses ID: " + result.id);
+           if (result.message) {
+              Logger.log("Message: " + result.message);
+           }
+           // Tandai dengan label agar script tidak mengeksekusinya lagi di menit berikutnya
+           thread.addLabel(processedLabel);
+        } else {
+           Logger.log("Gagal memproses Task: " + result.message);
+        }
+      } catch (parseError) {
+        Logger.log("Respon backend bukan JSON valid: " + responseText);
       }
     } catch (e) {
       Logger.log("Error Thread " + thread.getId() + " - " + e.toString());

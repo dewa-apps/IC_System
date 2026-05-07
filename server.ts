@@ -73,19 +73,6 @@ async function startServer() {
       }
 
       const db = getDb();
-      
-      // Generate sequence display_id
-      const metadataRef = db.collection('metadata').doc('taskSequence');
-      const newDisplayId = await db.runTransaction(async (transaction) => {
-        const metadataDoc = await transaction.get(metadataRef);
-        let currentMax = 0;
-        if (metadataDoc.exists && metadataDoc.data()?.lastNumber) {
-          currentMax = metadataDoc.data()?.lastNumber;
-        }
-        const nextNum = currentMax + 1;
-        transaction.set(metadataRef, { lastNumber: nextNum }, { merge: true });
-        return `IC-${String(nextNum).padStart(5, '0')}`;
-      });
 
       // Find division based on requestor
       let division = "";
@@ -191,6 +178,19 @@ async function startServer() {
           return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
         }
       }
+
+      // Generate sequence display_id
+      const metadataRef = db.collection('metadata').doc('taskSequence');
+      const newDisplayId = await db.runTransaction(async (transaction) => {
+        const metadataDoc = await transaction.get(metadataRef);
+        let currentMax = 0;
+        if (metadataDoc.exists && metadataDoc.data()?.lastNumber) {
+          currentMax = metadataDoc.data()?.lastNumber;
+        }
+        const nextNum = currentMax + 1;
+        transaction.set(metadataRef, { lastNumber: nextNum }, { merge: true });
+        return `IC-${String(nextNum).padStart(5, '0')}`;
+      });
 
       // Create a task
       const result = await db.collection("tasks").add({

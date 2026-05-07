@@ -138,6 +138,45 @@ async function startServer() {
         console.error("Error finding user for authorName", e);
       }
 
+      // Check if this task should be appended as a subtask to an existing task
+      if (taskData.parent_task_id) {
+        const parentTasks = await db.collection("tasks")
+          .where("display_id", "==", taskData.parent_task_id)
+          .limit(1)
+          .get();
+          
+        if (!parentTasks.empty) {
+          const parentDoc = parentTasks.docs[0];
+          const parentData = parentDoc.data();
+          const newSubtask = {
+            id: Math.random().toString(36).substr(2, 9),
+            title: taskData.title,
+            completed: false,
+            due_date: taskData.due_date || ''
+          };
+          
+          await parentDoc.ref.update({
+            subtasks: [...(parentData.subtasks || []), newSubtask],
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          // Log activity for adding subtask
+          try {
+            await db.collection("activity_log").add({
+              task_id: parentDoc.id,
+              user: authorName,
+              action: "Added Subtask via Email",
+              details: `Title: ${newSubtask.title}`,
+              created_at: admin.firestore.FieldValue.serverTimestamp()
+            });
+          } catch (logError) {
+            console.error("Error creating activity log for subtask:", logError);
+          }
+          
+          return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id });
+        }
+      }
+
       // Create a task
       const result = await db.collection("tasks").add({
         ...taskData,

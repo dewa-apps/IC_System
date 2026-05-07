@@ -1,14 +1,44 @@
-const doFetch = async () => {
-    try {
-        const res = await fetch("http://localhost:3000/api/gas-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "deleteDriveFile", fileId: "1Afm-bUbJK6WFJiZeMYuF0G2jpVmjfadv" })
-        });
-        console.log(res.status);
-        console.log(await res.text());
-    } catch (e) {
-        console.error(e);
-    }
+const bodyText = `#task# Tes masupin task dengan Sub task, kategori, prioritas
+#priority# Medium
+#category# UAT
+#subtask# Tes 1
+#subtask# Tes 2
+#parent_task# IC-00455`;
+
+var description = "";
+var match = bodyText.match(/#task#\s*(.*?)(?:\r?\n|$)/i);
+if (match && match[1]) {
+  description = match[1].trim(); 
 }
-doFetch();
+console.log("description:", description);
+
+var parentTaskId = null;
+var parentMatch = bodyText.match(/#parent_task#\s*(.*?)(?:\r?\n|$)/i);
+if (parentMatch && parentMatch[1]) {
+  parentTaskId = parentMatch[1].trim();
+}
+console.log("parentTaskId:", parentTaskId);
+
+var category = "General";
+var categoryMatch = bodyText.match(/#category#\s*(.*?)(?:\r?\n|$)/i);
+if (categoryMatch && categoryMatch[1]) {
+  category = categoryMatch[1].trim();
+}
+console.log("category:", category);
+
+var priority = "LOW";
+var priorityMatch = bodyText.match(/#priority#\s*(.*?)(?:\r?\n|$)/i);
+if (priorityMatch && priorityMatch[1]) {
+  priority = priorityMatch[1].trim().toUpperCase();
+}
+console.log("priority:", priority);
+
+var subtasks = [];
+var subtaskRegex = /#subtask#\s*(.*?)(?:\r?\n|$)/gi;
+var subtaskMatch;
+while ((subtaskMatch = subtaskRegex.exec(bodyText)) !== null) {
+  if (subtaskMatch[1]) {
+    subtasks.push(subtaskMatch[1].trim());
+  }
+}
+console.log("subtasks:", subtasks);

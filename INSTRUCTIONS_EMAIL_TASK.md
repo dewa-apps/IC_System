@@ -52,7 +52,7 @@ function processEmailTasks() {
   
   // URL untuk endpoint webhook di server kita
   // Ganti dengan Shared App URL jika Anda sudah mem-"Publish" atau membagikan (Share) pembaruan terbaru.
-  // Untuk pengetesan (Development), gunakan Dev URL Anda.
+  // Untuk pengetesan (Development), gunakan Dev URL Anda atau url vercel Anda (https://ic-system.vercel.app/api/webhooks/email-task).
   var webhookUrl = "https://ic-system.vercel.app/api/webhooks/email-task";
   var secretKey = "SIRCLO_INVENTORY_SECRET_TASK";
   
@@ -107,21 +107,28 @@ function processEmailTasks() {
     // Ambil string di sebelah #task#
     var bodyText = taskMessage.getPlainBody();
     var description = "";
-    var match = bodyText.match(/#task#(.*?)(?:\n|$)/);
+    var match = bodyText.match(/#task#\s*(.*?)(?:\r?\n|$)/i);
     if (match && match[1]) {
       description = match[1].trim(); 
     }
     
+    // Ambil parent_task_id jika ini harus masuk sebagai subtask ke task lain
+    var parentTaskId = null;
+    var parentMatch = bodyText.match(/#parent_task#\s*(.*?)(?:\r?\n|$)/i);
+    if (parentMatch && parentMatch[1]) {
+      parentTaskId = parentMatch[1].trim();
+    }
+    
     // Ambil category dari #category#
     var category = "General";
-    var categoryMatch = bodyText.match(/#category#(.*?)(?:\n|$)/i);
+    var categoryMatch = bodyText.match(/#category#\s*(.*?)(?:\r?\n|$)/i);
     if (categoryMatch && categoryMatch[1]) {
       category = categoryMatch[1].trim();
     }
 
     // Ambil priority dari #priority#
     var priority = "LOW";
-    var priorityMatch = bodyText.match(/#priority#(.*?)(?:\n|$)/i);
+    var priorityMatch = bodyText.match(/#priority#\s*(.*?)(?:\r?\n|$)/i);
     if (priorityMatch && priorityMatch[1]) {
       priority = priorityMatch[1].trim().toUpperCase();
       var validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
@@ -132,10 +139,11 @@ function processEmailTasks() {
     
     // Ambil subtasks dari baris yang mengandung #subtask#
     var subtasks = [];
-    var subtaskMatches = bodyText.match(/#subtask#(.*?)(?:\n|$)/g);
-    if (subtaskMatches) {
-      for (var s = 0; s < subtaskMatches.length; s++) {
-        var subTitle = subtaskMatches[s].replace(/#subtask#/, "").trim();
+    var subtaskRegex = /#subtask#\s*(.*?)(?:\r?\n|$)/gi;
+    var subtaskMatch;
+    while ((subtaskMatch = subtaskRegex.exec(bodyText)) !== null) {
+      if (subtaskMatch[1]) {
+        var subTitle = subtaskMatch[1].trim();
         if (subTitle) {
           subtasks.push({
             id: Utilities.getUuid(),
@@ -166,7 +174,8 @@ function processEmailTasks() {
       request_date: formatDateStr(requestDate),
       due_date: formatDateStr(dueDate),
       email_thread_id: thread.getId(),
-      subtasks: subtasks
+      subtasks: subtasks,
+      parent_task_id: parentTaskId
     };
     
     var payload = {

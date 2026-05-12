@@ -3165,7 +3165,7 @@ export default function App() {
           <ReportsView tasks={tasks} />
         ) : currentView === 'audit' ? (
           currentUserRole === 'admin' ? (
-            <AuditLogView logs={systemLogs} tasks={tasks} />
+            <AuditLogView logs={systemLogs} tasks={tasks} dataKlaim={dataKlaim} dataJadwal={dataJadwal} dataLinks={dataLinks} />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-[var(--bg-body)]">
               <div className="text-center">

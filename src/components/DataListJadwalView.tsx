@@ -310,6 +310,22 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     setEditingJadwal(null);
   };
 
+  const logActivity = async (jadwalId: string, action: string, details: string) => {
+    const user = auth.currentUser;
+    const userName = user?.displayName || user?.email || 'Unknown User';
+    try {
+      await addDoc(collection(db, 'activity_log'), {
+        task_id: jadwalId,
+        user: userName,
+        action,
+        details,
+        created_at: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Failed to log activity", e);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.date || !formData.type || !formData.category || !formData.wh_code) {
       toast.error('Date, Type, Category, and WH Code are required');
@@ -331,6 +347,7 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
 
       if (currentEditingJadwal) {
         await updateDoc(doc(db, 'data_list_jadwal', currentEditingJadwal.id), saveData);
+        await logActivity(currentEditingJadwal.id, "Updated Jadwal", `Updated Jadwal ${currentEditingJadwal.display_id || formData.wh_name}`);
         toast.success('Jadwal updated successfully');
       } else {
         const codePrefix = `J-`;
@@ -347,11 +364,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
         
         let newDisplayId = `${codePrefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
-        await addDoc(dbRef, {
+        const newDocRef = await addDoc(dbRef, {
           ...saveData,
           display_id: newDisplayId,
           created_at: serverTimestamp()
         });
+        await logActivity(newDocRef.id, "Created Jadwal", `Created Jadwal ${newDisplayId}`);
         toast.success('Jadwal created successfully');
       }
 
@@ -393,10 +411,12 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     if (!editingJadwal) return;
     setIsDeleting(true);
     const currentId = editingJadwal.id;
+    const displayId = editingJadwal.display_id || currentId;
     closeModal(); // UX immediate close
     
     try {
       await deleteDoc(doc(db, 'data_list_jadwal', currentId));
+      await logActivity(currentId, "Deleted Jadwal", `Deleted Jadwal ${displayId}`);
       toast.success('Jadwal deleted successfully');
     } catch (error) {
       console.error(error);

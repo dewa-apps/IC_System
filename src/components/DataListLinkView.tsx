@@ -194,6 +194,22 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
     setIsModalOpen(true);
   };
 
+  const logActivity = async (linkId: string, action: string, details: string) => {
+    const user = auth.currentUser;
+    const userName = user?.displayName || user?.email || 'Unknown User';
+    try {
+      await addDoc(collection(db, 'activity_log'), {
+        task_id: linkId,
+        user: userName,
+        action,
+        details,
+        created_at: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Failed to log activity", e);
+    }
+  };
+
   const saveLink = async () => {
     if (!formData.link_name || !formData.link_url) {
       toast.error('Link Name and URL are required');
@@ -214,6 +230,7 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
           ...formData,
           updated_at: serverTimestamp()
         });
+        await logActivity(currentEditingLink.id, "Updated Link", `Updated Link ${formData.link_name}`);
         toast.success('Link updated successfully');
       } else {
         let newDisplayId = '';
@@ -235,12 +252,13 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
           newDisplayId = `${catInitial}-${nextNum.toString().padStart(3, '0')}`;
         }
 
-        await addDoc(collection(db, 'data_list_link'), {
+        const newDocRef = await addDoc(collection(db, 'data_list_link'), {
           ...formData,
           display_id: newDisplayId,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
         });
+        await logActivity(newDocRef.id, "Created Link", `Created Link ${formData.link_name}`);
         toast.success('Link created successfully');
       }
 
@@ -267,7 +285,11 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
     setIsModalOpen(false); // Close immediately for better UX
 
     try {
+      const linkToDelete = dataLinks.find(l => l.id === id);
       await deleteDoc(doc(db, 'data_list_link', id));
+      if (linkToDelete) {
+        await logActivity(id, "Deleted Link", `Deleted Link ${linkToDelete.link_name}`);
+      }
       toast.success('Link deleted successfully');
     } catch (e) {
       console.error(e);

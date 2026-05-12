@@ -2,6 +2,8 @@ import React, { useState, useMemo, forwardRef, useEffect } from 'react';
 import { Search, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Paperclip, Loader2, Trash2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
 export interface DataListWarehouseViewRef {}
 
@@ -150,6 +152,22 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     }
   };
 
+  const logActivity = async (whId: string, action: string, details: string) => {
+    const user = auth.currentUser;
+    const userName = user?.displayName || user?.email || 'Unknown User';
+    try {
+      await addDoc(collection(db, 'activity_log'), {
+        task_id: whId,
+        user: userName,
+        action,
+        details,
+        created_at: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Failed to log activity", e);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length || !activeItem) return;
     
@@ -208,6 +226,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
         // Optimistically update file list or requery
         if (newFolderUrl) {
            fetchItemFiles(newFolderUrl);
+           await logActivity(activeItem.id || activeItem.whp, "Uploaded Warehouse File", `Uploaded ${uploadedCount} file(s) to ${activeItem.name}`);
            if (!activeItem.folder) {
              activeItem.folder = newFolderUrl; // Note: mutates local state just for UI
            }
@@ -221,7 +240,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     }
   };
 
-  const handleDeleteFile = async (fileId: string) => {
+  const handleDeleteFile = async (fileId: string, fileName?: string) => {
     setIsDeletingFile(fileId);
     try {
       const res = await apiFetch('/api/gas-proxy', {
@@ -233,6 +252,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
         toast.success("File deleted");
         setItemFiles(prev => prev.filter(f => f.id !== fileId));
         setFileToDelete(null);
+        if (activeItem) await logActivity(activeItem.id || activeItem.whp, "Deleted Warehouse File", `Deleted file ${fileName || fileId} from ${activeItem.name}`);
       }
     } catch (e) {
       toast.error("Failed to delete file");
@@ -575,7 +595,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
                                  onClick={(e) => {
                                    e.preventDefault();
                                    e.stopPropagation();
-                                   handleDeleteFile(file.id);
+                                   handleDeleteFile(file.id, file.name);
                                  }}
                                  disabled={isDeletingFile === file.id}
                                  className="text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:text-white text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50 flex items-center gap-1"

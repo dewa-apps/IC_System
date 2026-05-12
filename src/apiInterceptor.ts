@@ -10,31 +10,6 @@ const storage = getStorage();
 const realFetch = window.fetch;
 
 const originalFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
-  
-  if (url === '/api/gas-proxy' || url.includes('/api/gas-proxy')) {
-    const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
-    const newInit = { ...init };
-    
-    // Create new headers object ensuring it's a plain object to avoid Headers class issues sometimes
-    const headers: Record<string, string> = {};
-    if (newInit.headers) {
-      if (newInit.headers instanceof Headers) {
-        newInit.headers.forEach((v, k) => { headers[k] = v; });
-      } else if (Array.isArray(newInit.headers)) {
-        newInit.headers.forEach(([k, v]) => { headers[k] = v; });
-      } else {
-        Object.assign(headers, newInit.headers);
-      }
-    }
-    
-    // Set text/plain for GAS to avoid CORS preflight, it expects it!
-    headers['Content-Type'] = 'text/plain;charset=utf-8';
-    newInit.headers = headers;
-    
-    return realFetch(gasUrl, newInit);
-  }
-  
   return realFetch(input, init);
 };
 

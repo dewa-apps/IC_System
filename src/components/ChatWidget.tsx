@@ -58,7 +58,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
   const handleFetchDriveInfo = async () => {
     setIsFetchingDrive(true);
     try {
-      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+      const gasUrl = "/api/gas-proxy";
       const payload = {
         action: 'getDriveFolderText',
         folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
@@ -66,7 +66,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
 
       const response = await fetch(gasUrl, {
         method: "POST",
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Prevent CORS preflight for GAS
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const resData = await response.json();

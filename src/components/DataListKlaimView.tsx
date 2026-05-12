@@ -497,6 +497,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
   const handleSave = async () => {
     setIsSaving(true);
+    setIsModalOpen(false); // Close immediately for better UX
+    
     try {
       const calculatedDue = (formData.claim_value || 0) + (formData.tax || 0);
 
@@ -557,7 +559,6 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
           toast.success("New Klaim created");
         }
       }
-      setIsModalOpen(false);
     } catch (err: any) {
       toast.error("Failed to save: " + err.message);
     } finally {

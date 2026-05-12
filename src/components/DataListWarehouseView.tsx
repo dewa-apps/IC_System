@@ -152,58 +152,69 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length || !activeItem) return;
-    const file = e.target.files[0];
     
     setIsUploading(true);
-    try {
-      const folderId = activeItem.folder?.match(/[-\w]{25,}/)?.[0] || '';
-      
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file);
-      });
-      
-      const res = await apiFetch('/api/gas-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'uploadWarehouseFile',
-          base64: base64Data,
-          fileName: file.name,
-          mimeType: file.type,
-          whp: activeItem.whp,
-          whpName: activeItem.name,
-          folderUrl: activeItem.folder,
-          folderId: folderId,
-          sheetId: '1_rHOUu6u4A_tpP7ScrdgQ6iVmijijB2mCHXTSQ6t1Bg',
-          sheetName: 'Cek_status_WH'
-        })
-      });
+    const files = Array.from(e.target.files);
+    let uploadedCount = 0;
+    let newFolderUrl = activeItem.folder;
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status === 'success') {
-          toast.success('File uploaded');
-          // Optimistically update file list or requery
-          if (activeItem) {
-            const newFolderUrl = data.folderUrl || activeItem.folder;
-            if (newFolderUrl) {
-               fetchItemFiles(newFolderUrl);
-               if (!activeItem.folder) {
-                 activeItem.folder = newFolderUrl; // Note: mutates local state just for UI
-               }
+    try {
+      for (const file of files) {
+        const folderId = newFolderUrl?.match(/[-\w]{25,}/)?.[0] || '';
+        
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = (error) => reject(error);
+          reader.readAsDataURL(file);
+        });
+        
+        const res = await apiFetch('/api/gas-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'uploadWarehouseFile',
+            base64: base64Data,
+            fileName: file.name,
+            mimeType: file.type,
+            whp: activeItem.whp,
+            whpName: activeItem.name,
+            folderUrl: newFolderUrl,
+            folderId: folderId,
+            sheetId: '1_rHOUu6u4A_tpP7ScrdgQ6iVmijijB2mCHXTSQ6t1Bg', // Config: maybe get from state?
+            sheetName: 'Cek_status_WH'
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'success') {
+            uploadedCount++;
+            if (data.folderUrl) {
+              newFolderUrl = data.folderUrl;
             }
+          } else {
+            console.error('Upload failed for', file.name, data.message);
+            toast.error(`Upload failed for ${file.name}: ${data.message}`);
           }
         } else {
-          toast.error('Upload failed: ' + data.message);
+          console.error('Upload failed for', file.name, 'HTTP', res.status);
+          toast.error(`Upload failed for ${file.name}: HTTP ${res.status}`);
         }
-      } else {
-        toast.error('Upload failed: HTTP ' + res.status);
+      }
+      
+      if (uploadedCount > 0) {
+        toast.success(`Successfully uploaded ${uploadedCount} file(s)`);
+        // Optimistically update file list or requery
+        if (newFolderUrl) {
+           fetchItemFiles(newFolderUrl);
+           if (!activeItem.folder) {
+             activeItem.folder = newFolderUrl; // Note: mutates local state just for UI
+           }
+        }
       }
     } catch (e) {
-      toast.error('Error reading or uploading file');
+      toast.error('Error reading or uploading files');
     } finally {
       setIsUploading(false);
       e.target.value = ''; // clear input
@@ -526,7 +537,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
                      <Paperclip className="w-4 h-4" /> Files / Attachments
                    </h4>
                    <div className="flex items-center gap-2">
-                     <input type="file" id="wh-upload" className="hidden" onChange={handleFileUpload} />
+                     <input type="file" id="wh-upload" multiple className="hidden" onChange={handleFileUpload} />
                      <label htmlFor="wh-upload" className="cursor-pointer px-3 py-1.5 bg-[var(--accent-color)] text-white text-xs font-bold rounded shadow-sm hover:bg-opacity-90 transition-colors flex items-center gap-1.5 disabled:opacity-50">
                        {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
                        Upload File

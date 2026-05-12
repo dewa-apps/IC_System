@@ -51,12 +51,20 @@ export default function GanttView({ tasks, onTaskClick, getPriorityIcon, getAvat
         dates.push(d);
     }
 
-    // Sort by start date then priority
+    // Sort by Key dari terbaru ke lama (descending)
     processed.sort((a, b) => {
-        if (a.start.getTime() !== b.start.getTime()) {
-            return a.start.getTime() - b.start.getTime();
+      const getNum = (task: Task) => {
+        if (task.display_id) {
+          const match = String(task.display_id).match(/\d+/);
+          if (match) return parseInt(match[0], 10);
         }
-        return 0; // secondary sort could be added
+        return typeof task.id === 'number' ? task.id : parseInt(String(task.id).replace(/\D/g, ''), 10) || 0;
+      };
+      
+      const numA = getNum(a.task);
+      const numB = getNum(b.task);
+      
+      return numB - numA;
     });
 
     return { processedTasks: processed, minDate, totalDays, dates };

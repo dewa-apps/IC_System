@@ -55,6 +55,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDeletingFile, setIsDeletingFile] = useState<string | null>(null);
+  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
 
   // Resizing
   const [colWidths, setColWidths] = useState<{ [key: string]: number }>({
@@ -156,49 +157,53 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     setIsUploading(true);
     try {
       const folderId = activeItem.folder?.match(/[-\w]{25,}/)?.[0] || '';
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        
-        const res = await apiFetch('/api/gas-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'uploadWarehouseFile',
-            base64: base64Data,
-            fileName: file.name,
-            mimeType: file.type,
-            whp: activeItem.whp,
-            whpName: activeItem.name,
-            folderUrl: activeItem.folder,
-            folderId: folderId,
-            sheetId: '1_rHOUu6u4A_tpP7ScrdgQ6iVmijijB2mCHXTSQ6t1Bg',
-            sheetName: 'Cek_status_WH'
-          })
-        });
+      
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+      });
+      
+      const res = await apiFetch('/api/gas-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'uploadWarehouseFile',
+          base64: base64Data,
+          fileName: file.name,
+          mimeType: file.type,
+          whp: activeItem.whp,
+          whpName: activeItem.name,
+          folderUrl: activeItem.folder,
+          folderId: folderId,
+          sheetId: '1_rHOUu6u4A_tpP7ScrdgQ6iVmijijB2mCHXTSQ6t1Bg',
+          sheetName: 'Cek_status_WH'
+        })
+      });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'success') {
-            toast.success('File uploaded');
-            // Optimistically update file list or requery
-            if (activeItem) {
-              const newFolderUrl = data.folderUrl || activeItem.folder;
-              if (newFolderUrl) {
-                 fetchItemFiles(newFolderUrl);
-                 if (!activeItem.folder) {
-                   activeItem.folder = newFolderUrl; // Note: mutates local state just for UI
-                 }
-              }
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success') {
+          toast.success('File uploaded');
+          // Optimistically update file list or requery
+          if (activeItem) {
+            const newFolderUrl = data.folderUrl || activeItem.folder;
+            if (newFolderUrl) {
+               fetchItemFiles(newFolderUrl);
+               if (!activeItem.folder) {
+                 activeItem.folder = newFolderUrl; // Note: mutates local state just for UI
+               }
             }
-          } else {
-            toast.error('Upload failed: ' + data.message);
           }
+        } else {
+          toast.error('Upload failed: ' + data.message);
         }
-      };
-      reader.readAsDataURL(file);
+      } else {
+        toast.error('Upload failed: HTTP ' + res.status);
+      }
     } catch (e) {
-      toast.error('Error reading file');
+      toast.error('Error reading or uploading file');
     } finally {
       setIsUploading(false);
       e.target.value = ''; // clear input
@@ -206,7 +211,6 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   };
 
   const handleDeleteFile = async (fileId: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
     setIsDeletingFile(fileId);
     try {
       const res = await apiFetch('/api/gas-proxy', {
@@ -217,6 +221,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
       if (res.ok) {
         toast.success("File deleted");
         setItemFiles(prev => prev.filter(f => f.id !== fileId));
+        setFileToDelete(null);
       }
     } catch (e) {
       toast.error("Failed to delete file");
@@ -551,13 +556,45 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
                              <span className="text-[10px] text-[var(--text-muted)] mt-0.5">{(file.size / 1024 / 1024).toFixed(2)} MB • {new Date(file.dateCreated).toLocaleDateString()}</span>
                            </div>
                          </div>
-                         <button
-                           onClick={() => handleDeleteFile(file.id)}
-                           disabled={isDeletingFile === file.id}
-                           className="p-1.5 text-[var(--text-muted)] hover:text-rose-500 hover:bg-[var(--bg-primary)] rounded transition-colors"
-                         >
-                           {isDeletingFile === file.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                         </button>
+                         <div className="flex items-center gap-1">
+                           {fileToDelete === file.id ? (
+                             <div className="flex items-center gap-1 bg-[var(--badge-danger-bg)] rounded-md p-0.5 border border-[var(--danger-color)] border-opacity-30">
+                               <button 
+                                 type="button"
+                                 onClick={(e) => {
+                                   e.preventDefault();
+                                   e.stopPropagation();
+                                   handleDeleteFile(file.id);
+                                 }}
+                                 disabled={isDeletingFile === file.id}
+                                 className="text-[var(--danger-color)] hover:bg-[var(--danger-color)] hover:text-white text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
+                               >
+                                 {isDeletingFile === file.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                 Yes
+                               </button>
+                               <button 
+                                 type="button"
+                                 onClick={(e) => {
+                                   e.preventDefault();
+                                   e.stopPropagation();
+                                   setFileToDelete(null);
+                                 }}
+                                 disabled={isDeletingFile === file.id}
+                                 className="text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] text-[10px] font-bold px-2 py-1 rounded transition-colors disabled:opacity-50"
+                               >
+                                 No
+                               </button>
+                             </div>
+                           ) : (
+                             <button
+                               onClick={() => setFileToDelete(file.id)}
+                               disabled={isDeletingFile === file.id}
+                               className="p-1.5 text-[var(--text-muted)] hover:text-rose-500 hover:bg-[var(--bg-primary)] rounded transition-colors"
+                             >
+                               {isDeletingFile === file.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                             </button>
+                           )}
+                         </div>
                        </div>
                      ))}
                    </div>

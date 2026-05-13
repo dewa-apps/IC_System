@@ -35,7 +35,17 @@ export const formatDoc = (docSnapshot: any) => {
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
-  if (!url.startsWith('/api/') || url.startsWith('/api/gas-proxy')) {
+  if (url.startsWith('/api/gas-proxy')) {
+    const REAL_GAS_URL = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+    const payload = typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body || {});
+    return originalFetch(REAL_GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    });
+  }
+
+  if (!url.startsWith('/api/')) {
     return originalFetch(input, init);
   }
 
@@ -105,7 +115,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           // If the GAS script doesn't handle this yet, the user will need to update their Apps Script.
           const gasUrl = "/api/gas-proxy";
           
-          const response = await originalFetch(gasUrl, {
+          const response = await apiFetch(gasUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -185,7 +195,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
               const userEmail = usersSnapshot.docs[0].data().email;
               const gasUrl = "/api/gas-proxy";
               
-              const response = await originalFetch(gasUrl, {
+              const response = await apiFetch(gasUrl, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -249,7 +259,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           const authorEmail = usersSnapshot.docs[0].data().email;
           const gasUrl = "/api/gas-proxy";
           
-          const response = await originalFetch(gasUrl, {
+          const response = await apiFetch(gasUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -309,7 +319,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           try {
             const gasUrl = "/api/gas-proxy";
             
-            const response = await originalFetch(gasUrl, {
+            const response = await apiFetch(gasUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1005,7 +1015,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
       // Send to Google Apps Script
       const gasUrl = "/api/gas-proxy";
-      const gasResponse = await originalFetch(gasUrl, {
+      const gasResponse = await apiFetch(gasUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1112,7 +1122,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
 
       // Send to Google Apps Script
       const gasUrl = "/api/gas-proxy";
-      const gasResponse = await originalFetch(gasUrl, {
+      const gasResponse = await apiFetch(gasUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -2,7 +2,7 @@ import React, { useState, useMemo, forwardRef, useImperativeHandle, useRef, useE
 import { DataListKlaim, Attachment, ActivityLog } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar, FileText, Image as ImageIcon, FileSpreadsheet, File as FileIcon, BarChart3 } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Upload, Loader2, Calendar, FileText, Image as ImageIcon, FileSpreadsheet, File as FileIcon, BarChart3, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
 import { StatusDropdown, getStatusBadgeClass } from './StatusDropdown';
@@ -44,6 +44,24 @@ const getFileIcon = (mimeType: string) => {
   if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return <FileSpreadsheet className="w-5 h-5 text-green-500" />;
   if (mimeType.includes('word') || mimeType.includes('document')) return <FileText className="w-5 h-5 text-blue-700" />;
   return <FileIcon className="w-5 h-5 text-[var(--text-secondary)]" />;
+};
+
+const formatDateSafely = (dateVal: any, isTime: boolean = false) => {
+  if (!dateVal) return '';
+  try {
+    let dateObj;
+    if (typeof dateVal?.toDate === 'function') {
+      dateObj = dateVal.toDate();
+    } else {
+      dateObj = new Date(dateVal);
+    }
+    if (isNaN(dateObj.getTime())) return '';
+    return isTime 
+      ? dateObj.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : dateObj.toISOString().split('T')[0];
+  } catch (e) {
+    return '';
+  }
 };
 
 const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProps>(({ dataKlaim, searchQuery, onClearSearch, metadataOptions }, ref) => {
@@ -135,7 +153,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         (item.display_id || '').toLowerCase().includes(ms) ||
         (item.invoice_no || '').toLowerCase().includes(ms) ||
         (item.description || '').toLowerCase().includes(ms) ||
-        (item.whp_name || '').toLowerCase().includes(ms)
+        (item.whp_name || '').toLowerCase().includes(ms) ||
+        (item.subject_email || '').toLowerCase().includes(ms)
       );
     }
 
@@ -659,6 +678,48 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     return { totalDue, totalTax, totalClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, typeCounts, typeAmounts };
   }, [filteredData]);
 
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Subsidiary', 'Claim Type', 'WHP Name', 'Invoice Date', 'Invoice No', 'Subject Email', 'Description', 'Partner', 'Claim Value', 'Tax', 'Due', 'Status', 'Remark', 'Created At'];
+    
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || "";
+    };
+
+    const rows = filteredData.map(item => {
+      // Create local formatted values, replace undefined with '' and quotes with double quotes
+      return [
+        item.display_id || `KL-${item.id}`,
+        item.subsidiary || '',
+        item.claim_type || '',
+        item.whp_name || '',
+        item.invoice_date || '',
+        `"${item.invoice_no ? item.invoice_no.replace(/"/g, '""') : ''}"`,
+        `"${item.subject_email ? item.subject_email.replace(/"/g, '""') : ''}"`,
+        `"${stripHtml(item.description || '').replace(/"/g, '""')}"`,
+        item.partner || '',
+        item.claim_value || 0,
+        item.tax || 0,
+        item.due || 0,
+        item.status || '',
+        `"${stripHtml(item.remark || '').replace(/"/g, '""')}"`,
+        formatDateSafely(item.created_at)
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `data_list_klaim_export_${formatDateSafely(new Date()) || 'data'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[var(--bg-body)] h-full overflow-hidden">
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -813,6 +874,15 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         </div>
         
         <div className="flex flex-wrap items-center gap-2 justify-end">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+            title="Export to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+          
           {/* View Toggle */}
           <div className="flex items-center bg-[var(--bg-secondary)] p-1 rounded-md border border-[var(--border-color)]">
             <button 
@@ -929,6 +999,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 <tr>
                   {[
                     { key: 'display_id', label: 'ID' },
+                    { key: 'subsidiary', label: 'Subsidiary' },
                     { key: 'claim_type', label: 'Claim Type' },
                     { key: 'whp_name', label: 'WHP Name' },
                     { key: 'invoice_date', label: 'Invoice Date' },
@@ -978,6 +1049,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     >
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-medium" style={{ maxWidth: colWidths.display_id }}>
                         {item.display_id || '-'}
+                      </td>
+                      <td className="px-4 py-2 truncate text-[var(--text-secondary)]" style={{ maxWidth: colWidths.subsidiary }}>
+                        {item.subsidiary || '-'}
                       </td>
                       <td className="px-4 py-2 truncate text-[var(--text-secondary)]" style={{ maxWidth: colWidths.claim_type }}>
                         {item.claim_type || '-'}
@@ -1467,9 +1541,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                              <div className="text-sm text-[var(--text-secondary)] mt-1 whitespace-pre-wrap">{activity.details}</div>
                            )}
                            <div className="text-xs text-[var(--text-muted)] mt-1">
-                             {new Date(activity.created_at).toLocaleString('id-ID', {
-                               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                             })}
+                             {formatDateSafely(activity.created_at, true)}
                            </div>
                         </div>
                       ))

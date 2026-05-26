@@ -2,7 +2,25 @@ import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react
 import { DataListJadwal } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Calendar } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Calendar, Download } from 'lucide-react';
+
+const formatDateSafely = (dateVal: any, isTime: boolean = false) => {
+  if (!dateVal) return '';
+  try {
+    let dateObj;
+    if (typeof dateVal?.toDate === 'function') {
+      dateObj = dateVal.toDate();
+    } else {
+      dateObj = new Date(dateVal);
+    }
+    if (isNaN(dateObj.getTime())) return '';
+    return isTime 
+      ? dateObj.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : dateObj.toISOString().split('T')[0];
+  } catch (e) {
+    return '';
+  }
+};
 import toast from 'react-hot-toast';
 
 export interface DataListJadwalViewRef {
@@ -259,6 +277,45 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
 
     return filtered;
   }, [dataJadwal, searchQuery, selectedTypes, selectedCategories, selectedWHPartners, sortField, sortOrder, dateFilter, startDate, endDate]);
+
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Type', 'Category', 'Date', 'WH Code', 'WH Name', 'WH Partner', 'Subject Email', 'Subject Email (BTB Brand)', 'Status BTB WH', 'Status BTB Brand', 'Remark', 'Created At'];
+    
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || "";
+    };
+
+    const rows = filteredJadwal.map(item => {
+      return [
+        item.display_id || `JD-${item.id}`,
+        item.type || '',
+        item.category || '',
+        item.date || '',
+        item.wh_code || '',
+        `"${item.wh_name ? item.wh_name.replace(/"/g, '""') : ''}"`,
+        item.wh_partner || '',
+        `"${item.subject_email ? item.subject_email.replace(/"/g, '""') : ''}"`,
+        `"${item.subject_email_btb_brand ? item.subject_email_btb_brand.replace(/"/g, '""') : ''}"`,
+        item.status_btb_wh || '',
+        item.status_btb_brand || '',
+        `"${stripHtml(item.remark || '').replace(/"/g, '""')}"`,
+        formatDateSafely(item.created_at)
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `data_list_jadwal_export_${formatDateSafely(new Date()) || 'data'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const totalPages = Math.max(1, Math.ceil(filteredJadwal.length / rowsPerPage));
   const paginatedJadwal = filteredJadwal.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -748,6 +805,15 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
         </div>
 
         <div className="flex flex-wrap items-center gap-2 justify-end">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+            title="Export to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+
           {legacyJadwalCount > 0 && (
             <button 
               onClick={fixLegacyIds}

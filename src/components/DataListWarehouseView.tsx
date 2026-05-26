@@ -1,9 +1,27 @@
 import React, { useState, useMemo, forwardRef, useEffect } from 'react';
-import { Search, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Paperclip, Loader2, Trash2, RefreshCw } from 'lucide-react';
+import { Search, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Paperclip, Loader2, Trash2, RefreshCw, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { apiFetch } from '../apiInterceptor';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+
+const formatDateSafely = (dateVal: any, isTime: boolean = false) => {
+  if (!dateVal) return '';
+  try {
+    let dateObj;
+    if (typeof dateVal?.toDate === 'function') {
+      dateObj = dateVal.toDate();
+    } else {
+      dateObj = new Date(dateVal);
+    }
+    if (isNaN(dateObj.getTime())) return '';
+    return isTime 
+      ? dateObj.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : dateObj.toISOString().split('T')[0];
+  } catch (e) {
+    return '';
+  }
+};
 
 export interface DataListWarehouseViewRef {}
 
@@ -109,6 +127,39 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     const startIndex = (currentPage - 1) * rowsPerPage;
     return filteredData.slice(startIndex, startIndex + rowsPerPage);
   }, [filteredData, currentPage, rowsPerPage]);
+
+  const handleExportCSV = () => {
+    const headers = ['WHP', 'Name', 'Location Code', 'Type Bisnis', 'Status', 'Remark', 'Folder'];
+    
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return doc.body.textContent || "";
+    };
+
+    const rows = filteredData.map(item => {
+      return [
+        `"${item.whp ? item.whp.replace(/"/g, '""') : ''}"`,
+        `"${item.name ? item.name.replace(/"/g, '""') : ''}"`,
+        item.location_code || '',
+        item.type_bisnis || '',
+        item.status || '',
+        `"${stripHtml(item.remark || '').replace(/"/g, '""')}"`,
+        `"${item.folder ? item.folder.replace(/"/g, '""') : ''}"`
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `data_list_warehouse_export_${formatDateSafely(new Date()) || 'data'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleSort = (field: string) => {
     if (isResizingRef.current) return;
@@ -316,6 +367,15 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
         </div>
 
         <div className="flex flex-wrap items-center gap-2 justify-end">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent-color)] transition-colors"
+            title="Export to CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+
           {onRefresh && (
             <button
               onClick={onRefresh}

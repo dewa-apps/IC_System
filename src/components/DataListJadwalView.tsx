@@ -1,7 +1,7 @@
 import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { DataListJadwal } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight, Filter, Calendar, Download } from 'lucide-react';
 
 const formatDateSafely = (dateVal: any, isTime: boolean = false) => {

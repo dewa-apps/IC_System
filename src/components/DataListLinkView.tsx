@@ -1,7 +1,7 @@
 import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { DataListLink } from '../types';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { Search, Plus, Trash2, Edit2, ExternalLink, ChevronUp, ChevronDown, ListIcon, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 

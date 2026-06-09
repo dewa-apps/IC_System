@@ -222,6 +222,15 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length || !activeItem) return;
     
+    // Check file sizes
+    for (let i = 0; i < e.target.files.length; i++) {
+       if (e.target.files[i].size > 2 * 1024 * 1024) {
+          toast.error("File size exceeds 2MB limit. Please compress the file first.");
+          e.target.value = '';
+          return;
+       }
+    }
+
     setIsUploading(true);
     const files = Array.from(e.target.files);
     let uploadedCount = 0;

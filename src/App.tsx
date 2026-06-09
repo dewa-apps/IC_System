@@ -1526,51 +1526,138 @@ export default function App() {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
     const intervalMs = backupConfig.intervalMinutes * 60 * 1000;
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      const tmp = document.createElement('DIV');
+      tmp.innerHTML = html;
+      return tmp.textContent || tmp.innerText || '';
+    };
+
     const intervalId = setInterval(async () => {
        try {
          console.log('Running automatic backup...');
-         await apiFetch('/api/gas-proxy', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ 
-             action: 'backupToSheets',
-             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-             tasks: tasksRef.current
-           })
-         });
          
-         await apiFetch('/api/gas-proxy', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ 
-             action: 'backupDataListLinksToSheets',
-             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-             sheetName: 'LINK',
-             links: dataLinksRef.current
-           })
-         });
+         const checkPayloadSize = (payload: any, label: string) => {
+           const sizeMB = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
+           console.log(`Payload size for ${label}: ${sizeMB.toFixed(2)} MB`);
+           if (sizeMB > 1.5) {
+             console.warn(`Skipping ${label} backup to avoid 413 Payload Too Large.`);
+             return false;
+           }
+           return true;
+         };
 
-         await apiFetch('/api/gas-proxy', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ 
-             action: 'backupDataListJadwalToSheets',
-             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-             sheetName: 'JADWAL',
-             jadwal: dataJadwalRef.current
-           })
-         });
+         const minimalTasks = tasksRef.current.map(item => ({
+           id: item.id,
+           display_id: item.display_id,
+           title: item.title,
+           description: stripHtml(item.description).slice(0, 100),
+           status: item.status,
+           assignee: item.assignee,
+           requestor: item.requestor,
+           division: item.division,
+           brand: item.brand,
+           category: item.category,
+           due_date: item.due_date,
+           updated_at: item.updated_at,
+           created_at: item.created_at
+         }));
 
-         await apiFetch('/api/gas-proxy', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ 
-             action: 'backupDataListKlaimToSheets',
-             sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-             sheetName: 'KLAIM',
-             klaim: dataKlaimRef.current
-           })
-         });
+         if (checkPayloadSize({ action: 'backupToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', tasks: minimalTasks }, 'Tasks')) {
+           await apiFetch('/api/gas-proxy', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ 
+               action: 'backupToSheets',
+               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+               tasks: minimalTasks
+             })
+           });
+         }
+         
+         const minimalLinks = dataLinksRef.current.map(item => ({
+           id: item.id,
+           whp: item.whp,
+           name: item.name,
+           location_code: item.location_code,
+           email: item.email,
+           company: item.company,
+           links_drive: item.links_drive
+         }));
+
+         if (checkPayloadSize({ action: 'backupDataListLinksToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'LINK', links: minimalLinks }, 'Links')) {
+           await apiFetch('/api/gas-proxy', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ 
+               action: 'backupDataListLinksToSheets',
+               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+               sheetName: 'LINK',
+               links: minimalLinks
+             })
+           });
+         }
+
+         const minimalJadwal = dataJadwalRef.current.map(item => ({
+           id: item.id,
+           display_id: item.display_id,
+           date: item.date,
+           type: item.type,
+           category: item.category,
+           wh_code: item.wh_code,
+           wh_name: item.wh_name,
+           wh_partner: item.wh_partner,
+           remark: stripHtml(item.remark).slice(0, 100),
+           subject_email: item.subject_email,
+           status_btb_wh: item.status_btb_wh,
+           subject_email_btb_brand: item.subject_email_btb_brand,
+           status_btb_brand: item.status_btb_brand
+         }));
+
+         if (checkPayloadSize({ action: 'backupDataListJadwalToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'JADWAL', jadwal: minimalJadwal }, 'Jadwal')) {
+           await apiFetch('/api/gas-proxy', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ 
+               action: 'backupDataListJadwalToSheets',
+               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+               sheetName: 'JADWAL',
+               jadwal: minimalJadwal
+             })
+           });
+         }
+
+         const minimalKlaim = dataKlaimRef.current.map(item => ({
+           id: item.id,
+           display_id: item.display_id,
+           claim_type: item.claim_type,
+           invoice_date: item.invoice_date,
+           invoice_no: item.invoice_no,
+           description: stripHtml(item.description).slice(0, 100),
+           subject_email: item.subject_email,
+           link_data: item.link_data,
+           whp_name: item.whp_name,
+           partner: item.partner,
+           claim_value: item.claim_value,
+           tax: item.tax,
+           due: item.due,
+           subsidiary: item.subsidiary,
+           status: item.status,
+           remark: stripHtml(item.remark).slice(0, 100)
+         }));
+
+         if (checkPayloadSize({ action: 'backupDataListKlaimToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'KLAIM', klaim: minimalKlaim }, 'Klaim')) {
+           await apiFetch('/api/gas-proxy', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ 
+               action: 'backupDataListKlaimToSheets',
+               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+               sheetName: 'KLAIM',
+               klaim: minimalKlaim
+             })
+           });
+         }
        } catch (err) {
          console.error('Auto backup failed', err);
        }
@@ -2161,6 +2248,14 @@ export default function App() {
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+       if (files[i].size > 2 * 1024 * 1024) {
+          toast.error("File size exceeds 2MB limit. Please compress the file first.");
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+       }
+    }
 
     const newFiles = Array.from(files);
 

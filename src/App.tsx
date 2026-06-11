@@ -1537,14 +1537,45 @@ export default function App() {
        try {
          console.log('Running automatic backup...');
          
+         const CHUNK_SIZE = 100;
          const checkPayloadSize = (payload: any, label: string) => {
            const sizeMB = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
            console.log(`Payload size for ${label}: ${sizeMB.toFixed(2)} MB`);
            if (sizeMB > 1.5) {
-             console.warn(`Skipping ${label} backup to avoid 413 Payload Too Large.`);
+             console.warn(`Skipping ${label} backup chunk to avoid 413 Payload Too Large.`);
              return false;
            }
            return true;
+         };
+
+         // helper function to send chunked requests
+         const sendChunks = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
+           for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+             const chunk = items.slice(i, i + CHUNK_SIZE);
+             const isAppend = i > 0;
+             const payload: any = {
+               action,
+               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+               [listKey]: chunk,
+               append: isAppend
+             };
+             if (sheetNameVal) {
+               payload[sheetNameKey] = sheetNameVal;
+             }
+             if (checkPayloadSize(payload, `${action} chunk ${i / CHUNK_SIZE + 1}`)) {
+               const res = await apiFetch('/api/gas-proxy', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(payload)
+               });
+               if (!res.ok) {
+                 console.error(`Failed to send chunk ${i / CHUNK_SIZE + 1} for ${action}`);
+                 break; // Stop sending further chunks if one fails
+               }
+             } else {
+                 console.error(`Chunk ${i / CHUNK_SIZE + 1} for ${action} is still too large, increasing chunk splitting is required!`);
+             }
+           }
          };
 
          const minimalTasks = tasksRef.current.map(item => ({
@@ -1563,17 +1594,7 @@ export default function App() {
            created_at: item.created_at
          }));
 
-         if (checkPayloadSize({ action: 'backupToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', tasks: minimalTasks }, 'Tasks')) {
-           await apiFetch('/api/gas-proxy', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ 
-               action: 'backupToSheets',
-               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-               tasks: minimalTasks
-             })
-           });
-         }
+         await sendChunks(minimalTasks, 'backupToSheets', '', undefined, 'tasks');
          
          const minimalLinks = dataLinksRef.current.map(item => ({
            id: item.id,
@@ -1585,18 +1606,7 @@ export default function App() {
            links_drive: item.links_drive
          }));
 
-         if (checkPayloadSize({ action: 'backupDataListLinksToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'LINK', links: minimalLinks }, 'Links')) {
-           await apiFetch('/api/gas-proxy', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ 
-               action: 'backupDataListLinksToSheets',
-               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-               sheetName: 'LINK',
-               links: minimalLinks
-             })
-           });
-         }
+         await sendChunks(minimalLinks, 'backupDataListLinksToSheets', 'sheetName', 'LINK', 'links');
 
          const minimalJadwal = dataJadwalRef.current.map(item => ({
            id: item.id,
@@ -1614,18 +1624,7 @@ export default function App() {
            status_btb_brand: item.status_btb_brand
          }));
 
-         if (checkPayloadSize({ action: 'backupDataListJadwalToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'JADWAL', jadwal: minimalJadwal }, 'Jadwal')) {
-           await apiFetch('/api/gas-proxy', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ 
-               action: 'backupDataListJadwalToSheets',
-               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-               sheetName: 'JADWAL',
-               jadwal: minimalJadwal
-             })
-           });
-         }
+         await sendChunks(minimalJadwal, 'backupDataListJadwalToSheets', 'sheetName', 'JADWAL', 'jadwal');
 
          const minimalKlaim = dataKlaimRef.current.map(item => ({
            id: item.id,
@@ -1646,18 +1645,7 @@ export default function App() {
            remark: stripHtml(item.remark).slice(0, 100)
          }));
 
-         if (checkPayloadSize({ action: 'backupDataListKlaimToSheets', sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0', sheetName: 'KLAIM', klaim: minimalKlaim }, 'Klaim')) {
-           await apiFetch('/api/gas-proxy', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ 
-               action: 'backupDataListKlaimToSheets',
-               sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-               sheetName: 'KLAIM',
-               klaim: minimalKlaim
-             })
-           });
-         }
+         await sendChunks(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
        } catch (err) {
          console.error('Auto backup failed', err);
        }

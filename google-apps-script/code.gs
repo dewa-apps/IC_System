@@ -48,8 +48,19 @@ function doPost(e) {
       var spreadsheet = SpreadsheetApp.openById(sheetId);
       var sheet = spreadsheet.getSheets()[0]; // Menyimpan di sheet / tab pertama
       
+      var headers = [
+        "Task ID", "Display ID", "Title", "Status", "Priority", 
+        "Assignee", "Category", "Brand", "Due Date", "Created At",
+        "Request Date", "Description", "Create By", "Requestor", "Division"
+      ];
+
       // Bersihkan tab data lama terlebih dahulu agar yang baru tidak menumpuk
-      sheet.clear();
+      // Jika data.append true, jangan clear
+      if (!data.append) {
+        sheet.clear();
+        sheet.appendRow(headers);
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+      }
       
       var tasks = data.tasks;
       if (!tasks || tasks.length === 0) {
@@ -59,17 +70,6 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
       }
       
-      // 1. Definisikan Judul Kolom (Headers)
-      var headers = [
-        "Task ID", "Display ID", "Title", "Status", "Priority", 
-        "Assignee", "Category", "Brand", "Due Date", "Created At",
-        "Request Date", "Description", "Create By", "Requestor", "Division"
-      ];
-      sheet.appendRow(headers);
-      
-      // Format tebal huruf Headers
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-
       // 2. Memasukkan Baris Tabel (Row)
       var rows = tasks.map(function(task) {
         // Strip HTML tags from description if needed, though for Sheets backup we can just pass the string.
@@ -96,7 +96,9 @@ function doPost(e) {
       });
       
       // Taruh semua baris sekaligus dalam 1 panggilan (batch insert) agar cepat
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      var startRow = sheet.getLastRow() + 1;
+      if (startRow === 1) startRow = 2; // In case headers weren't added for some reason
+      sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
       
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
@@ -114,8 +116,17 @@ function doPost(e) {
       // Jika sheet tidak ada, buat sheet baru
       if (!sheet) {
         sheet = spreadsheet.insertSheet(sheetName);
-      } else {
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Category", "Link Name", "Link URL", 
+        "Description", "Note"
+      ];
+
+      if (!data.append) {
         sheet.clear();
+        sheet.appendRow(headers);
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
       }
       
       var links = data.links;
@@ -126,13 +137,6 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
       }
       
-      var headers = [
-        "ID", "Display ID", "Category", "Link Name", "Link URL", 
-        "Description", "Note"
-      ];
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-
       var rows = links.map(function(link) {
         return [
           link.id || "",
@@ -145,7 +149,9 @@ function doPost(e) {
         ];
       });
       
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      var startRow = sheet.getLastRow() + 1;
+      if (startRow === 1) startRow = 2;
+      sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
       
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
@@ -163,8 +169,18 @@ function doPost(e) {
       // Jika sheet tidak ada, buat sheet baru
       if (!sheet) {
         sheet = spreadsheet.insertSheet(sheetName);
-      } else {
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Date", "Type", "Category", "WH Code",
+        "WH Name", "WH Partner", "Remark", "Subject Email", "Status BTB WH",
+        "Subject Email BTB Brand", "Status BTB Brand"
+      ];
+
+      if (!data.append) {
         sheet.clear();
+        sheet.appendRow(headers);
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
       }
       
       var jadwalList = data.jadwal;
@@ -175,14 +191,6 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
       }
       
-      var headers = [
-        "ID", "Display ID", "Date", "Type", "Category", "WH Code",
-        "WH Name", "WH Partner", "Remark", "Subject Email", "Status BTB WH",
-        "Subject Email BTB Brand", "Status BTB Brand"
-      ];
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-
       var rows = jadwalList.map(function(item) {
         return [
           item.id || "",
@@ -201,7 +209,9 @@ function doPost(e) {
         ];
       });
       
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      var startRow = sheet.getLastRow() + 1;
+      if (startRow === 1) startRow = 2;
+      sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
       
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
@@ -219,8 +229,18 @@ function doPost(e) {
       // Jika sheet tidak ada, buat sheet baru
       if (!sheet) {
         sheet = spreadsheet.insertSheet(sheetName);
-      } else {
+      }
+      
+      var headers = [
+        "ID", "Display ID", "Claim Type", "Invoice Date", "Invoice No",
+        "Description", "Subject Email", "Link Data", "WHP Name", "Partner",
+        "Claim Value", "Tax", "Due", "Subsidiary", "Status", "Remark"
+      ];
+
+      if (!data.append) {
         sheet.clear();
+        sheet.appendRow(headers);
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
       }
       
       var klaimList = data.klaim;
@@ -231,14 +251,6 @@ function doPost(e) {
         })).setMimeType(ContentService.MimeType.JSON);
       }
       
-      var headers = [
-        "ID", "Display ID", "Claim Type", "Invoice Date", "Invoice No",
-        "Description", "Subject Email", "Link Data", "WHP Name", "Partner",
-        "Claim Value", "Tax", "Due", "Subsidiary", "Status", "Remark"
-      ];
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-
       var rows = klaimList.map(function(item) {
         return [
           item.id || "",
@@ -260,7 +272,9 @@ function doPost(e) {
         ];
       });
       
-      sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+      var startRow = sheet.getLastRow() + 1;
+      if (startRow === 1) startRow = 2;
+      sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
       
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',

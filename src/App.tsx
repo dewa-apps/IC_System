@@ -1537,11 +1537,11 @@ export default function App() {
        try {
          console.log('Running automatic backup...');
          
-         const CHUNK_SIZE = 100;
+         const CHUNK_SIZE = 30; // Reduced for smaller payload sizes
          const checkPayloadSize = (payload: any, label: string) => {
            const sizeMB = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
            console.log(`Payload size for ${label}: ${sizeMB.toFixed(2)} MB`);
-           if (sizeMB > 1.5) {
+           if (sizeMB > 2.5) { // increased to 2.5 since server can handle more now
              console.warn(`Skipping ${label} backup chunk to avoid 413 Payload Too Large.`);
              return false;
            }
@@ -1550,6 +1550,8 @@ export default function App() {
 
          // helper function to send chunked requests
          const sendChunks = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
+           if (!items || items.length === 0) return;
+           console.log(`Starting backup for ${action} - Total items: ${items.length}`);
            for (let i = 0; i < items.length; i += CHUNK_SIZE) {
              const chunk = items.slice(i, i + CHUNK_SIZE);
              const isAppend = i > 0;
@@ -1569,13 +1571,17 @@ export default function App() {
                  body: JSON.stringify(payload)
                });
                if (!res.ok) {
-                 console.error(`Failed to send chunk ${i / CHUNK_SIZE + 1} for ${action}`);
-                 break; // Stop sending further chunks if one fails
+                 const errTxt = await res.text().catch(() => "");
+                 console.error(`Failed to send chunk ${i / CHUNK_SIZE + 1} for ${action}. ${errTxt}`);
+                 throw new Error(`Chunk ${i / CHUNK_SIZE + 1} backup failed for ${action}`);
                }
              } else {
-                 console.error(`Chunk ${i / CHUNK_SIZE + 1} for ${action} is still too large, increasing chunk splitting is required!`);
+                 console.error(`Chunk ${i / CHUNK_SIZE + 1} for ${action} is still too large!`);
              }
+             // Add a small delay between chunks to avoid hitting GAS rate limits
+             await new Promise(resolve => setTimeout(resolve, 1500));
            }
+           console.log(`Finished backup for ${action}`);
          };
 
          const minimalTasks = tasksRef.current.map(item => ({

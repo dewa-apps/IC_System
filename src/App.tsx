@@ -1575,7 +1575,8 @@ export default function App() {
         updated_at: item.updated_at,
         created_at: item.created_at,
         priority: item.priority,
-        request_date: item.request_date
+        request_date: item.request_date,
+        authorName: item.authorName
       }));
 
       await sendAll(minimalTasks, 'backupToSheets', '', undefined, 'tasks');

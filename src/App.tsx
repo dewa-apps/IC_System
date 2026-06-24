@@ -1537,6 +1537,12 @@ export default function App() {
       const sendAll = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
         if (!items || items.length === 0) return;
         console.log(`Starting backup for ${action} - Total items: ${items.length}`);
+        
+        // Debugging the first item to ensure fields are populated
+        if (items.length > 0) {
+          console.log(`Sample item for ${action}:`, items[0]);
+        }
+
         const payload: any = {
           action,
           sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',

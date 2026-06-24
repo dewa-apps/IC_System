@@ -882,10 +882,15 @@ function SidebarItem({ icon, label, active, collapsed, visible, onClick, subItem
   const hasSubItems = subItems && subItems.length > 0;
   const isAnySubActive = subItems?.some(sub => sub.active);
   const [isOpen, setIsOpen] = useState(isAnySubActive || false);
+  const [isFlyoutOpen, setIsFlyoutOpen] = useState(false);
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (hasSubItems) {
-      setIsOpen(!isOpen);
+      if (collapsed) {
+        setIsFlyoutOpen(!isFlyoutOpen);
+      } else {
+        setIsOpen(!isOpen);
+      }
     } else if (onClick) {
       onClick();
     }
@@ -912,37 +917,44 @@ function SidebarItem({ icon, label, active, collapsed, visible, onClick, subItem
 
       {/* Flyout or Tooltip for collapsed state */}
       {collapsed && visible && (
-        <div 
-          className={`fixed left-16 ml-2 bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-md shadow-xl opacity-0 invisible group-hover/sidebarItem:opacity-100 group-hover/sidebarItem:visible transition-all z-[1000] overflow-hidden ${
-            hasSubItems ? 'w-48 py-1 pointer-events-auto' : 'px-2 py-1 pointer-events-none'
-          }`}
-          style={{ marginTop: '-36px' }} 
-        >
-          {hasSubItems ? (
-            <>
-              <div className="px-3 py-2 text-xs font-bold text-[var(--text-sidebar-muted)] border-b border-[var(--border-color)] uppercase tracking-wider mb-1">
-                {label}
-              </div>
-              <div className="flex flex-col">
-                {subItems.map((sub, i) => (
-                  <button
-                    key={i}
-                    onClick={sub.onClick}
-                    className={`w-full text-left px-3 py-2 text-sm transition-all ${
-                      sub.active
-                        ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium'
-                        : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
-                    }`}
-                  >
-                    {sub.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <span className="text-xs text-[var(--text-sidebar)] whitespace-nowrap">{label}</span>
+        <>
+          {isFlyoutOpen && hasSubItems && (
+            <div className="fixed inset-0 z-[900]" onClick={(e) => { e.stopPropagation(); setIsFlyoutOpen(false); }} />
           )}
-        </div>
+          <div 
+            className={`fixed left-16 ml-2 bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-md shadow-xl transition-all z-[1000] overflow-hidden ${
+              isFlyoutOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/sidebarItem:opacity-100 group-hover/sidebarItem:visible'
+            } ${
+              hasSubItems ? 'w-48 py-1 pointer-events-auto' : 'px-2 py-1 pointer-events-none'
+            }`}
+            style={{ marginTop: '-36px' }} 
+          >
+            {hasSubItems ? (
+              <>
+                <div className="px-3 py-2 text-xs font-bold text-[var(--text-sidebar-muted)] border-b border-[var(--border-color)] uppercase tracking-wider mb-1">
+                  {label}
+                </div>
+                <div className="flex flex-col">
+                  {subItems.map((sub, i) => (
+                    <button
+                      key={i}
+                      onClick={(e) => { e.stopPropagation(); sub.onClick(); setIsFlyoutOpen(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-all ${
+                        sub.active
+                          ? 'bg-[var(--bg-sidebar-active)] text-[var(--text-sidebar)] font-medium'
+                          : 'text-[var(--text-sidebar-muted)] hover:bg-[var(--bg-sidebar-hover)] hover:text-[var(--text-sidebar)]'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <span className="text-xs text-[var(--text-sidebar)] whitespace-nowrap">{label}</span>
+            )}
+          </div>
+        </>
       )}
       
       {!collapsed && hasSubItems && isOpen && (

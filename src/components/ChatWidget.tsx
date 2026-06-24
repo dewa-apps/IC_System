@@ -3,6 +3,7 @@ import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2, CloudDo
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { Task, DataListLink, DataListJadwal, DataListKlaim } from '../types';
+import { apiFetch } from '../apiInterceptor';
 
 interface Message {
   role: 'user' | 'model';
@@ -64,7 +65,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
         folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
       };
 
-      const response = await fetch(gasUrl, {
+      const response = await apiFetch(gasUrl, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -109,16 +110,9 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
         }
       };
 
-      let apiUrl = '/api/chat';
-      if (import.meta.env.VITE_API_URL) {
-        apiUrl = `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/chat`;
-      } else if (window.location.hostname.includes('github.io')) {
-        apiUrl = 'https://ic-system.vercel.app/api/chat';
-      }
-
       let response;
       try {
-        response = await fetch(apiUrl, {
+        response = await apiFetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

@@ -3567,6 +3567,7 @@ export default function App() {
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Due Date</label>
                     <input 
+                      required
                       type="date"
                       className="w-full px-3 py-2 border border-[var(--border-color)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
                       value={formData.due_date}
@@ -3609,6 +3610,7 @@ export default function App() {
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Category</label>
                     <input 
+                      required
                       type="text"
                       list="categories"
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"

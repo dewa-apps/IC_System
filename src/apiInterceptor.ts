@@ -36,10 +36,17 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
   if (url.startsWith('/api/gas-proxy') || url.startsWith('/api/chat') || url.startsWith('/api/webhooks')) {
-    const base = import.meta.env.BASE_URL;
-    let fetchUrl = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
-    if (base && base !== '/') {
-      fetchUrl = base.endsWith('/') ? `${base}${fetchUrl.substring(1)}` : `${base}${fetchUrl}`;
+    let fetchUrl = url;
+    if (import.meta.env.VITE_API_URL) {
+      const apiUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
+      fetchUrl = `${apiUrl}${url}`;
+    } else if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
+      fetchUrl = `https://ic-system.vercel.app${url}`;
+    } else {
+      const base = import.meta.env.BASE_URL;
+      if (base && base !== '/') {
+        fetchUrl = base.endsWith('/') ? `${base}${url.substring(1)}` : `${base}${url}`;
+      }
     }
     return originalFetch(fetchUrl, init);
   }

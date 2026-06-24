@@ -1046,7 +1046,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>('tasks');
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);

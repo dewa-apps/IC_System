@@ -35,8 +35,13 @@ export const formatDoc = (docSnapshot: any) => {
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
-  if (url.startsWith('/api/gas-proxy')) {
-    return originalFetch(input, init);
+  if (url.startsWith('/api/gas-proxy') || url.startsWith('/api/chat') || url.startsWith('/api/webhooks')) {
+    const base = import.meta.env.BASE_URL;
+    let fetchUrl = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
+    if (base && base !== '/') {
+      fetchUrl = base.endsWith('/') ? `${base}${fetchUrl.substring(1)}` : `${base}${fetchUrl}`;
+    }
+    return originalFetch(fetchUrl, init);
   }
 
   if (!url.startsWith('/api/')) {

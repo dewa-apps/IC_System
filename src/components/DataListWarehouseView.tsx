@@ -57,6 +57,8 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedWHP, setSelectedWHP] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [activeFilterSubmenu, setActiveFilterSubmenu] = useState<string | null>(null);
 
   // Sort
   const [sortField, setSortField] = useState<string>('name');
@@ -322,12 +324,18 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   };
 
   // Filter Dropdown Items
-  const FilterDropdownItem = ({ title, options, selected, onChange }: { title: string, options: string[], selected: string[], onChange: (val: string) => void }) => {
+  const FilterDropdownItem = ({ title, options, selected, onChange, isOpen, onToggle }: { title: string, options: string[], selected: string[], onChange: (val: string) => void, isOpen: boolean, onToggle: () => void }) => {
     return (
-      <div className="relative group/sub px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+      <div 
+        className="relative group/sub px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+        onClick={onToggle}
+      >
         <span className="font-medium">{title} {selected.length > 0 && `(${selected.length})`}</span>
         <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/sub:text-[var(--text-primary)]" />
-        <div className="absolute top-0 left-full ml-1 w-56 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/sub:opacity-100 group-hover/sub:visible transition-all z-50 max-h-64 overflow-y-auto py-2">
+        <div 
+          className={`absolute top-0 left-full ml-1 w-56 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 max-h-64 overflow-y-auto py-2 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/sub:opacity-100 group-hover/sub:visible'}`}
+          onClick={e => e.stopPropagation()}
+        >
           {options.map(opt => (
             <label key={opt} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-secondary)] cursor-pointer">
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => onChange(opt)} className="rounded border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--accent-color)] focus:ring-[var(--accent-color)]" />
@@ -347,15 +355,22 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
         <div className="flex flex-wrap items-center gap-2">
           {/* Filter Dropdown */}
           <div className="relative group/main z-20">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+            <button 
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors"
+            >
               <Filter className="w-3.5 h-3.5" />
               Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </button>
+            
+            {isFilterOpen && (
+              <div className="fixed inset-0 z-40" onClick={() => { setIsFilterOpen(false); setActiveFilterSubmenu(null); }} />
+            )}
           
-            <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-40 py-2">
-              <FilterDropdownItem title="Status" options={uniqueStatus} selected={selectedStatus} onChange={(val) => setSelectedStatus(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} />
-              <FilterDropdownItem title="Type Bisnis" options={uniqueTypes} selected={selectedTypes} onChange={(val) => setSelectedTypes(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} />
-              <FilterDropdownItem title="WHP" options={uniqueWHP} selected={selectedWHP} onChange={(val) => setSelectedWHP(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} />
+            <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-40 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible'}`}>
+              <FilterDropdownItem title="Status" options={uniqueStatus} selected={selectedStatus} onChange={(val) => setSelectedStatus(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'status'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'status' ? null : 'status')} />
+              <FilterDropdownItem title="Type Bisnis" options={uniqueTypes} selected={selectedTypes} onChange={(val) => setSelectedTypes(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'type'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'type' ? null : 'type')} />
+              <FilterDropdownItem title="WHP" options={uniqueWHP} selected={selectedWHP} onChange={(val) => setSelectedWHP(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'whp'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'whp' ? null : 'whp')} />
             </div>
           </div>
           

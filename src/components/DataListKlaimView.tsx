@@ -69,6 +69,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedWHP, setSelectedWHP] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [activeFilterSubmenu, setActiveFilterSubmenu] = useState<string | null>(null);
 
   // Sort
   const [sortField, setSortField] = useState<keyof DataListKlaim>('display_id');
@@ -736,19 +738,32 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         <div className="flex flex-wrap items-center gap-2">
           {/* Filter Dropdown */}
           <div className="relative group/main z-20">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+            <button 
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors"
+            >
               <Filter className="w-3.5 h-3.5" />
               Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </button>
+            
+            {isFilterOpen && (
+              <div className="fixed inset-0 z-40" onClick={() => { setIsFilterOpen(false); setActiveFilterSubmenu(null); }} />
+            )}
           
-          <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-40 py-2">
+          <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible'}`}>
             
             {/* Status Submenu */}
-            <div className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+            <div 
+              className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+              onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'status' ? null : 'status')}
+            >
               <span className="font-medium">Status {selectedStatus.length > 0 && `(${selectedStatus.length})`}</span>
               <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)]" />
               
-              <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+              <div 
+                className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'status' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible'}`}
+                onClick={e => e.stopPropagation()}
+              >
                 <div className="space-y-1">
                   {["Open", "In Progress", "Pending Finance", "Done"].map(st => (
                     <label key={`fs-${st}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
@@ -767,11 +782,17 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
             {/* Type Submenu */}
             {uniqueClaimTypes.length > 0 && (
-              <div className="relative group/type px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+              <div 
+                className="relative group/type px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'type' ? null : 'type')}
+              >
                 <span className="font-medium">Claim Type {selectedTypes.length > 0 && `(${selectedTypes.length})`}</span>
                 <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/type:text-[var(--text-primary)]" />
                 
-                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/type:opacity-100 group-hover/type:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                <div 
+                  className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'type' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/type:opacity-100 group-hover/type:visible'}`}
+                  onClick={e => e.stopPropagation()}
+                >
                   <div className="space-y-1">
                     {uniqueClaimTypes.map(t => (
                       <label key={`ft-${t}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
@@ -791,11 +812,17 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
             {/* WHP Name Submenu */}
             {uniqueWHPs.length > 0 && (
-              <div className="relative group/whp px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+              <div 
+                className="relative group/whp px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'whp' ? null : 'whp')}
+              >
                 <span className="font-medium">WHP Name {selectedWHP.length > 0 && `(${selectedWHP.length})`}</span>
                 <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/whp:text-[var(--text-primary)]" />
                 
-                <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/whp:opacity-100 group-hover/whp:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                <div 
+                  className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'whp' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/whp:opacity-100 group-hover/whp:visible'}`}
+                  onClick={e => e.stopPropagation()}
+                >
                   <div className="space-y-1">
                     {uniqueWHPs.map(w => (
                       <label key={`fw-${w}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">

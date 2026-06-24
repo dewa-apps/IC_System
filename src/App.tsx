@@ -1047,7 +1047,12 @@ export default function App() {
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
-  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const [isDragOver, setIsDragOver] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
@@ -1099,6 +1104,8 @@ export default function App() {
   const [selectedPriorities, setSelectedPriorities] = useState<TaskPriority[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [activeFilterSubmenu, setActiveFilterSubmenu] = useState<string | null>(null);
   const [sortField, setSortField] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -2891,18 +2898,32 @@ export default function App() {
               <div className="flex items-center gap-2 shrink-0">
                 {/* Filter Menu */}
                 <div className="relative group/main">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors">
+                  <button 
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs font-bold text-[var(--text-muted)] hover:bg-[var(--bg-primary)] transition-colors"
+                  >
                     <Filter className="w-3.5 h-3.5" />
                     Filters {(selectedStatuses.length + selectedPriorities.length + selectedCategories.length + selectedBrands.length) > 0 && `(${selectedStatuses.length + selectedPriorities.length + selectedCategories.length + selectedBrands.length})`}
                   </button>
-                  <div className="absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible transition-all z-50 py-2">
+                  
+                  {isFilterOpen && (
+                    <div className="fixed inset-0 z-40" onClick={() => { setIsFilterOpen(false); setActiveFilterSubmenu(null); }} />
+                  )}
+
+                  <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible'}`}>
                     
                     {/* Status Submenu */}
-                    <div className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                    <div 
+                      className="relative group/status px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                      onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'status' ? null : 'status')}
+                    >
                       <span className="font-medium">Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}</span>
                       <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)]" />
                       
-                      <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                      <div 
+                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'status' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible'}`}
+                        onClick={e => e.stopPropagation()}
+                      >
                         <div className="space-y-1">
                           {STATUS_COLUMNS.map(status => (
                             <label key={status.id} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
@@ -2925,11 +2946,17 @@ export default function App() {
                     </div>
 
                     {/* Priority Submenu */}
-                    <div className="relative group/priority px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                    <div 
+                      className="relative group/priority px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                      onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'priority' ? null : 'priority')}
+                    >
                       <span className="font-medium">Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}</span>
                       <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/priority:text-[var(--text-primary)]" />
                       
-                      <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/priority:opacity-100 group-hover/priority:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                      <div 
+                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'priority' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/priority:opacity-100 group-hover/priority:visible'}`}
+                        onClick={e => e.stopPropagation()}
+                      >
                         <div className="space-y-1">
                           {(['URGENT', 'HIGH', 'MEDIUM', 'LOW'] as TaskPriority[]).map(priority => (
                             <label key={priority} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
@@ -2953,11 +2980,17 @@ export default function App() {
 
                     {/* Category Submenu */}
                     {uniqueCategories.length > 0 && (
-                      <div className="relative group/category px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                      <div 
+                        className="relative group/category px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                        onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'category' ? null : 'category')}
+                      >
                         <span className="font-medium">Category {selectedCategories.length > 0 && `(${selectedCategories.length})`}</span>
                         <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/category:text-[var(--text-primary)]" />
                         
-                        <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/category:opacity-100 group-hover/category:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                        <div 
+                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'category' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/category:opacity-100 group-hover/category:visible'}`}
+                          onClick={e => e.stopPropagation()}
+                        >
                           <div className="space-y-1">
                             {uniqueCategories.map(cat => (
                               <label key={cat} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
@@ -2982,11 +3015,17 @@ export default function App() {
 
                     {/* Brand Submenu */}
                     {uniqueBrands.length > 0 && (
-                      <div className="relative group/brand px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]">
+                      <div 
+                        className="relative group/brand px-4 py-2 hover:bg-[var(--bg-primary)] cursor-pointer flex justify-between items-center text-sm text-[var(--text-primary)]"
+                        onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'brand' ? null : 'brand')}
+                      >
                         <span className="font-medium">Brand {selectedBrands.length > 0 && `(${selectedBrands.length})`}</span>
                         <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/brand:text-[var(--text-primary)]" />
                         
-                        <div className="absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg opacity-0 invisible group-hover/brand:opacity-100 group-hover/brand:visible transition-all z-50 p-2 max-h-96 overflow-y-auto">
+                        <div 
+                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'brand' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/brand:opacity-100 group-hover/brand:visible'}`}
+                          onClick={e => e.stopPropagation()}
+                        >
                           <div className="space-y-1">
                             {uniqueBrands.map(brand => (
                               <label key={brand} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">

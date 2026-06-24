@@ -1643,6 +1643,11 @@ export default function App() {
     }
   };
 
+  const performBackupToSheetsRef = useRef(performBackupToSheets);
+  useEffect(() => {
+    performBackupToSheetsRef.current = performBackupToSheets;
+  });
+
   useEffect(() => {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
@@ -1650,7 +1655,7 @@ export default function App() {
 
     const intervalId = setInterval(async () => {
        try {
-         await performBackupToSheets();
+         await performBackupToSheetsRef.current();
        } catch (e) {
          // Error already logged
        }

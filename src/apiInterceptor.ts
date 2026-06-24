@@ -36,7 +36,13 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
   if (url.startsWith('/api/gas-proxy')) {
-    return originalFetch(url, init);
+    const REAL_GAS_URL = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+    const payload = typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body || {});
+    return originalFetch(REAL_GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    });
   }
 
   if (!url.startsWith('/api/')) {

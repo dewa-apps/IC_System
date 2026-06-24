@@ -1533,49 +1533,29 @@ export default function App() {
     try {
       console.log('Running automatic backup...');
       
-      const CHUNK_SIZE = 30; // Reduced for smaller payload sizes
-      const checkPayloadSize = (payload: any, label: string) => {
-        const sizeMB = new Blob([JSON.stringify(payload)]).size / (1024 * 1024);
-        console.log(`Payload size for ${label}: ${sizeMB.toFixed(2)} MB`);
-        if (sizeMB > 2.5) { // increased to 2.5 since server can handle more now
-          console.warn(`Skipping ${label} backup chunk to avoid 413 Payload Too Large.`);
-          return false;
-        }
-        return true;
-      };
-
-      // helper function to send chunked requests
-      const sendChunks = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
+      // helper function to send all items
+      const sendAll = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
         if (!items || items.length === 0) return;
         console.log(`Starting backup for ${action} - Total items: ${items.length}`);
-        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-          const chunk = items.slice(i, i + CHUNK_SIZE);
-          const isAppend = i > 0;
-          const payload: any = {
-            action,
-            sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
-            [listKey]: chunk,
-            append: isAppend
-          };
-          if (sheetNameVal) {
-            payload[sheetNameKey] = sheetNameVal;
-          }
-          if (checkPayloadSize(payload, `${action} chunk ${i / CHUNK_SIZE + 1}`)) {
-            const res = await apiFetch('/api/gas-proxy', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            if (!res.ok) {
-              const errTxt = await res.text().catch(() => "");
-              console.error(`Failed to send chunk ${i / CHUNK_SIZE + 1} for ${action}. ${errTxt}`);
-              throw new Error(`Chunk ${i / CHUNK_SIZE + 1} backup failed for ${action}`);
-            }
-          } else {
-              console.error(`Chunk ${i / CHUNK_SIZE + 1} for ${action} is still too large!`);
-          }
-          // Add a small delay between chunks to avoid hitting GAS rate limits
-          await new Promise(resolve => setTimeout(resolve, 1500));
+        const payload: any = {
+          action,
+          sheetId: '1NbsPeG4LH4i6-VdmA3qCgBGxivKXTEuAvfh6VnzGrh0',
+          [listKey]: items,
+          append: false
+        };
+        if (sheetNameVal) {
+          payload[sheetNameKey] = sheetNameVal;
+        }
+        
+        const res = await apiFetch('/api/gas-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errTxt = await res.text().catch(() => "");
+          console.error(`Failed to send backup for ${action}. ${errTxt}`);
+          throw new Error(`Backup failed for ${action}`);
         }
         console.log(`Finished backup for ${action}`);
       };
@@ -1593,22 +1573,24 @@ export default function App() {
         category: item.category,
         due_date: item.due_date,
         updated_at: item.updated_at,
-        created_at: item.created_at
+        created_at: item.created_at,
+        priority: item.priority,
+        request_date: item.request_date
       }));
 
-      await sendChunks(minimalTasks, 'backupToSheets', '', undefined, 'tasks');
+      await sendAll(minimalTasks, 'backupToSheets', '', undefined, 'tasks');
       
-      const minimalLinks = dataLinksRef.current.map(item => ({
+      const minimalLinks = dataLinksRef.current.map((item: any) => ({
         id: item.id,
-        whp: item.whp,
-        name: item.name,
-        location_code: item.location_code,
-        email: item.email,
-        company: item.company,
-        links_drive: item.links_drive
+        display_id: item.display_id,
+        category: item.category,
+        link_name: item.link_name,
+        link_url: item.link_url,
+        description: item.description,
+        note: item.note
       }));
 
-      await sendChunks(minimalLinks, 'backupDataListLinksToSheets', 'sheetName', 'LINK', 'links');
+      await sendAll(minimalLinks, 'backupDataListLinksToSheets', 'sheetName', 'LINK', 'links');
 
       const minimalJadwal = dataJadwalRef.current.map(item => ({
         id: item.id,
@@ -1626,7 +1608,7 @@ export default function App() {
         status_btb_brand: item.status_btb_brand
       }));
 
-      await sendChunks(minimalJadwal, 'backupDataListJadwalToSheets', 'sheetName', 'JADWAL', 'jadwal');
+      await sendAll(minimalJadwal, 'backupDataListJadwalToSheets', 'sheetName', 'JADWAL', 'jadwal');
 
       const minimalKlaim = dataKlaimRef.current.map(item => ({
         id: item.id,
@@ -1647,7 +1629,7 @@ export default function App() {
         remark: stripHtml(item.remark).slice(0, 100)
       }));
 
-      await sendChunks(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
+      await sendAll(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
     } catch (err) {
       console.error('Auto backup failed', err);
       throw err;

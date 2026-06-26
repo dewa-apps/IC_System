@@ -26,6 +26,7 @@ const formatDateSafely = (dateVal: any, isTime: boolean = false) => {
 export interface DataListWarehouseViewRef {}
 
 interface WarehouseData {
+  id?: string;
   whp: string;
   name: string;
   location_code: string;
@@ -92,12 +93,14 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
   const [resizingCol, setResizingCol] = useState<{ key: string, startX: number, startWidth: number } | null>(null);
   const isResizingRef = React.useRef(false);
 
-  const uniqueTypes = useMemo(() => Array.from(new Set(dataWarehouse.map(w => w.type_bisnis).filter(Boolean))).sort(), [dataWarehouse]);
-  const uniqueStatus = useMemo(() => Array.from(new Set(dataWarehouse.map(w => w.status).filter(Boolean))).sort(), [dataWarehouse]);
-  const uniqueWHP = useMemo(() => Array.from(new Set(dataWarehouse.map(w => w.whp).filter(Boolean))).sort(), [dataWarehouse]);
+  const safeData = Array.isArray(dataWarehouse) ? dataWarehouse : [];
+
+  const uniqueTypes = useMemo(() => Array.from(new Set(safeData.map(w => w?.type_bisnis).filter(Boolean))).sort(), [safeData]);
+  const uniqueStatus = useMemo(() => Array.from(new Set(safeData.map(w => w?.status).filter(Boolean))).sort(), [safeData]);
+  const uniqueWHP = useMemo(() => Array.from(new Set(safeData.map(w => w?.whp).filter(Boolean))).sort(), [safeData]);
 
   const filteredData = useMemo(() => {
-    let result = [...dataWarehouse];
+    let result = [...safeData];
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -114,14 +117,14 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     if (selectedWHP.length > 0) result = result.filter(item => selectedWHP.includes(item.whp || 'None'));
 
     result.sort((a, b) => {
-      const valA = (a[sortField] || '').toLowerCase();
-      const valB = (b[sortField] || '').toLowerCase();
+      const valA = String((a as any)[sortField] || '').toLowerCase();
+      const valB = String((b as any)[sortField] || '').toLowerCase();
       const comparison = valA < valB ? -1 : valA > valB ? 1 : 0;
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
     return result as WarehouseData[];
-  }, [dataWarehouse, searchQuery, selectedTypes, selectedStatus, selectedWHP, sortField, sortOrder]);
+  }, [safeData, searchQuery, selectedTypes, selectedStatus, selectedWHP, sortField, sortOrder]);
 
   const totalPages = Math.ceil(filteredData.length / rowsPerPage);
   const paginatedData = useMemo(() => {
@@ -331,9 +334,9 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
         onClick={onToggle}
       >
         <span className="font-medium">{title} {selected.length > 0 && `(${selected.length})`}</span>
-        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/sub:text-[var(--text-primary)]" />
+        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] lg:group-hover/sub:text-[var(--text-primary)]" />
         <div 
-          className={`absolute top-0 left-full ml-1 w-56 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 max-h-64 overflow-y-auto py-2 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/sub:opacity-100 group-hover/sub:visible'}`}
+          className={`absolute top-0 left-full ml-1 w-56 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 max-h-64 overflow-y-auto py-2 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/sub:opacity-100 lg:group-hover/sub:visible'}`}
           onClick={e => e.stopPropagation()}
         >
           {options.map(opt => (
@@ -367,7 +370,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
               <div className="fixed inset-0 z-40" onClick={() => { setIsFilterOpen(false); setActiveFilterSubmenu(null); }} />
             )}
           
-            <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-40 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible'}`}>
+            <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-40 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/main:opacity-100 lg:group-hover/main:visible'}`}>
               <FilterDropdownItem title="Status" options={uniqueStatus} selected={selectedStatus} onChange={(val) => setSelectedStatus(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'status'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'status' ? null : 'status')} />
               <FilterDropdownItem title="Type Bisnis" options={uniqueTypes} selected={selectedTypes} onChange={(val) => setSelectedTypes(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'type'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'type' ? null : 'type')} />
               <FilterDropdownItem title="WHP" options={uniqueWHP} selected={selectedWHP} onChange={(val) => setSelectedWHP(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])} isOpen={activeFilterSubmenu === 'whp'} onToggle={() => setActiveFilterSubmenu(activeFilterSubmenu === 'whp' ? null : 'whp')} />

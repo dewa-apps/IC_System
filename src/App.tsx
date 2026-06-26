@@ -923,7 +923,7 @@ function SidebarItem({ icon, label, active, collapsed, visible, onClick, subItem
           )}
           <div 
             className={`fixed left-16 ml-2 bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-md shadow-xl transition-all z-[1000] overflow-hidden ${
-              isFlyoutOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/sidebarItem:opacity-100 group-hover/sidebarItem:visible'
+              isFlyoutOpen ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/sidebarItem:opacity-100 lg:group-hover/sidebarItem:visible'
             } ${
               hasSubItems ? 'w-48 py-1 pointer-events-auto' : 'px-2 py-1 pointer-events-none'
             }`}
@@ -987,6 +987,7 @@ export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationTab, setNotificationTab] = useState<'all' | 'unread' | 'read'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [systemLogs, setSystemLogs] = useState<ActivityLog[]>([]);
@@ -1494,8 +1495,8 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.status === 'success' && data.data) {
-          setDataWarehouse(data.data);
+        if (data.status === 'success') {
+          setDataWarehouse(Array.isArray(data.data) ? data.data : []);
           setIsWarehouseDataLoaded(true);
         }
       }
@@ -1712,6 +1713,17 @@ export default function App() {
     }
   };
 
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const unreadNotifs = notifications.filter(n => !n.read);
+      for (const notif of unreadNotifs) {
+        await updateDoc(doc(db, 'notifications', notif.id), { read: true });
+      }
+    } catch (e) {
+      console.error("Failed to mark all notifications as read", e);
+    }
+  };
+
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return '';
     // SQLite CURRENT_TIMESTAMP is YYYY-MM-DD HH:MM:SS (UTC)
@@ -1725,6 +1737,31 @@ export default function App() {
       minute: '2-digit',
       timeZone: 'Asia/Jakarta'
     });
+  };
+
+  const formatTimeAgo = (dateStr: string | any) => {
+    if (!dateStr) return '';
+    let d: Date;
+    if (typeof dateStr === 'string') {
+      const normalized = dateStr.includes(' ') ? dateStr.replace(' ', 'T') + 'Z' : 
+                        (dateStr.includes('T') && !dateStr.endsWith('Z') ? dateStr + 'Z' : dateStr);
+      d = new Date(normalized);
+    } else if (dateStr?.toDate) {
+      d = dateStr.toDate();
+    } else {
+      return '';
+    }
+    
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
   };
 
   const fetchTaskLinks = async (taskId: string | number) => {
@@ -2791,23 +2828,60 @@ export default function App() {
                   </button>
 
                   {showNotifications && (
-                    <div className="absolute right-0 mt-2 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-secondary)]">
-                        <h3 className="font-bold text-sm text-[var(--text-primary)]">Notifications</h3>
-                        <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] px-2 py-0.5 rounded-full">
-                          {notifications.filter(n => !n.read).length} new
-                        </span>
+                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-[var(--border-color)] flex flex-col gap-2 bg-[var(--bg-secondary)]">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-sm text-[var(--text-primary)]">Notifications</h3>
+                            {notifications.filter(n => !n.read).length > 0 && (
+                              <span className="text-xs text-[#eab308] bg-[#fef08a] bg-opacity-20 px-2 py-0.5 rounded-full font-medium">
+                                {notifications.filter(n => !n.read).length} new
+                              </span>
+                            )}
+                          </div>
+                          {notifications.filter(n => !n.read).length > 0 && (
+                            <button 
+                              onClick={markAllNotificationsAsRead}
+                              className="text-xs text-blue-500 hover:text-blue-600 transition-colors font-medium"
+                            >
+                              Mark all as read
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          {(['all', 'unread', 'read'] as const).map(tab => (
+                            <button
+                              key={tab}
+                              onClick={() => setNotificationTab(tab)}
+                              className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
+                                notificationTab === tab 
+                                  ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] border border-[var(--border-color)] shadow-sm' 
+                                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-primary)] hover:bg-opacity-50'
+                              }`}
+                            >
+                              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div className="max-h-96 overflow-y-auto">
-                        {notifications.length === 0 ? (
+                        {notifications.filter(n => 
+                          notificationTab === 'all' ? true : 
+                          notificationTab === 'unread' ? !n.read : 
+                          n.read
+                        ).length === 0 ? (
                           <div className="p-8 text-center text-[var(--text-muted)] text-sm">
-                            No notifications yet
+                            No {notificationTab !== 'all' ? notificationTab : ''} notifications yet
                           </div>
                         ) : (
-                          notifications.map(notif => (
+                          notifications.filter(n => 
+                            notificationTab === 'all' ? true : 
+                            notificationTab === 'unread' ? !n.read : 
+                            n.read
+                          ).map(notif => (
                             <div 
                               key={notif.id} 
-                              className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-50' : ''}`}
+                              className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-30' : ''}`}
                               onClick={() => {
                                 if (!notif.read) markNotificationAsRead(notif.id);
                                 setShowNotifications(false);
@@ -2820,23 +2894,25 @@ export default function App() {
                                 }
                               }}
                             >
-                              <div className="flex gap-3">
-                                <div className="mt-0.5">
-                                  {!notif.read ? (
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5"></div>
-                                  ) : (
-                                    <div className="w-2 h-2 bg-transparent rounded-full mt-1.5"></div>
-                                  )}
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                  {!notif.read && <div className="w-2 h-2 bg-[#22c55e] rounded-full shrink-0"></div>}
+                                  {notif.read && <div className="w-2 h-2 shrink-0"></div>}
+                                  <span className="bg-[#2563eb] text-white text-[10px] font-bold px-2 py-0.5 rounded shrink-0">
+                                    {notif.type || 'Notification'}
+                                  </span>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                                <div className="pl-4">
+                                  <p className="text-sm font-bold text-[var(--text-primary)] leading-snug">
                                     {notif.title}
                                   </p>
-                                  <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
-                                    {notif.message ? notif.message.replace(/<[^>]*>?/gm, '') : ''}
-                                  </p>
-                                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                                    {formatDateTime(notif.created_at?.toDate ? notif.created_at.toDate().toISOString() : notif.created_at)}
+                                  {notif.message && (
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">
+                                      {notif.message.replace(/<[^>]*>?/gm, '')}
+                                    </p>
+                                  )}
+                                  <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                                    {formatTimeAgo(notif.created_at)}
                                   </p>
                                 </div>
                               </div>
@@ -2922,7 +2998,7 @@ export default function App() {
                     <div className="fixed inset-0 z-40" onClick={() => { setIsFilterOpen(false); setActiveFilterSubmenu(null); }} />
                   )}
 
-                  <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/main:opacity-100 group-hover/main:visible'}`}>
+                  <div className={`absolute top-full left-0 mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 py-2 ${isFilterOpen ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/main:opacity-100 lg:group-hover/main:visible'}`}>
                     
                     {/* Status Submenu */}
                     <div 
@@ -2930,10 +3006,10 @@ export default function App() {
                       onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'status' ? null : 'status')}
                     >
                       <span className="font-medium">Status {selectedStatuses.length > 0 && `(${selectedStatuses.length})`}</span>
-                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)]" />
+                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] lg:group-hover/status:text-[var(--text-primary)]" />
                       
                       <div 
-                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'status' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible'}`}
+                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'status' ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/status:opacity-100 lg:group-hover/status:visible'}`}
                         onClick={e => e.stopPropagation()}
                       >
                         <div className="space-y-1">
@@ -2963,10 +3039,10 @@ export default function App() {
                       onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'priority' ? null : 'priority')}
                     >
                       <span className="font-medium">Priority {selectedPriorities.length > 0 && `(${selectedPriorities.length})`}</span>
-                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/priority:text-[var(--text-primary)]" />
+                      <ChevronRight className="w-4 h-4 text-[var(--text-muted)] lg:group-hover/priority:text-[var(--text-primary)]" />
                       
                       <div 
-                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'priority' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/priority:opacity-100 group-hover/priority:visible'}`}
+                        className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'priority' ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/priority:opacity-100 lg:group-hover/priority:visible'}`}
                         onClick={e => e.stopPropagation()}
                       >
                         <div className="space-y-1">
@@ -2997,10 +3073,10 @@ export default function App() {
                         onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'category' ? null : 'category')}
                       >
                         <span className="font-medium">Category {selectedCategories.length > 0 && `(${selectedCategories.length})`}</span>
-                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/category:text-[var(--text-primary)]" />
+                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] lg:group-hover/category:text-[var(--text-primary)]" />
                         
                         <div 
-                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'category' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/category:opacity-100 group-hover/category:visible'}`}
+                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'category' ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/category:opacity-100 lg:group-hover/category:visible'}`}
                           onClick={e => e.stopPropagation()}
                         >
                           <div className="space-y-1">
@@ -3032,10 +3108,10 @@ export default function App() {
                         onClick={() => setActiveFilterSubmenu(activeFilterSubmenu === 'brand' ? null : 'brand')}
                       >
                         <span className="font-medium">Brand {selectedBrands.length > 0 && `(${selectedBrands.length})`}</span>
-                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover/brand:text-[var(--text-primary)]" />
+                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)] lg:group-hover/brand:text-[var(--text-primary)]" />
                         
                         <div 
-                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'brand' ? 'opacity-100 visible' : 'opacity-0 invisible group-hover/brand:opacity-100 group-hover/brand:visible'}`}
+                          className={`absolute top-0 left-full ml-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-md shadow-lg transition-all z-50 p-2 max-h-96 overflow-y-auto ${activeFilterSubmenu === 'brand' ? 'opacity-100 visible' : 'opacity-0 invisible lg:group-hover/brand:opacity-100 lg:group-hover/brand:visible'}`}
                           onClick={e => e.stopPropagation()}
                         >
                           <div className="space-y-1">

@@ -74,6 +74,7 @@ export interface Task {
   comment_count?: number;
   attachment_count?: number;
   recurring_pattern?: 'none' | 'daily' | 'weekly' | 'monthly';
+  updated_at?: string;
 }
 
 export interface DataListJadwal {

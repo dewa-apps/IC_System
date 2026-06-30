@@ -250,9 +250,10 @@ async function startServer() {
       const response = await fetch(gasUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "text/plain;charset=utf-8",
+          "Content-Type": "application/json",
         },
-        body: payload
+        body: payload,
+        redirect: "follow"
       });
 
       const contentType = response.headers.get("content-type");

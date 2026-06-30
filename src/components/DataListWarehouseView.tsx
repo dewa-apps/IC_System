@@ -229,8 +229,8 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
     
     // Check file sizes
     for (let i = 0; i < e.target.files.length; i++) {
-       if (e.target.files[i].size > 2 * 1024 * 1024) {
-          toast.error("File size exceeds 2MB limit. Please compress the file first.");
+       if (e.target.files[i].size > 20 * 1024 * 1024) {
+          toast.error("File size exceeds 20MB limit. Please compress the file first.");
           e.target.value = '';
           return;
        }

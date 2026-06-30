@@ -75,7 +75,7 @@ export default function AuditLogView({ logs, tasks, dataKlaim = [], dataJadwal =
     }
     if ((action.includes('Link') && !action.includes('Linked task') && !action.includes('Removed link')) || dataLinks.some(l => l.id.toString() === taskIdStr)) {
       const link = dataLinks.find(l => l.id.toString() === taskIdStr);
-      return link ? (link.name || link.url) : `Link-${taskId}`;
+      return link ? (link.link_name || link.link_url) : `Link-${taskId}`;
     }
 
     const task = tasks.find(t => t.id.toString() === taskIdStr);

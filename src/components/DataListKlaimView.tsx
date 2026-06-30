@@ -338,8 +338,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     if (!files || files.length === 0) return;
     
     for (let i = 0; i < files.length; i++) {
-       if (files[i].size > 2 * 1024 * 1024) {
-          toast.error("File size exceeds 2MB limit. Please compress the file first.");
+       if (files[i].size > 20 * 1024 * 1024) {
+          toast.error("File size exceeds 20MB limit. Please compress the file first.");
           if (fileInputRef.current) fileInputRef.current.value = '';
           return;
        }

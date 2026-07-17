@@ -691,7 +691,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
   }, [filteredData]);
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Subsidiary', 'Claim Type', 'WHP Name', 'Invoice Date', 'Invoice No', 'Subject Email', 'Description', 'Partner', 'Claim Value', 'Tax', 'Due', 'Status', 'Remark', 'Created At'];
+    const headers = ['ID', 'Status', 'Subject Email', 'Subsidiary', 'Claim Type', 'WHP Name', 'Invoice Date', 'Invoice No', 'Partner', 'Claim Value', 'Tax', 'Due', 'Remark', 'Created At'];
     
     const stripHtml = (html: string) => {
       if (!html) return '';
@@ -703,18 +703,17 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       // Create local formatted values, replace undefined with '' and quotes with double quotes
       return [
         item.display_id || `KL-${item.id}`,
+        item.status || '',
+        `"${item.subject_email ? item.subject_email.replace(/"/g, '""') : ''}"`,
         item.subsidiary || '',
         item.claim_type || '',
         item.whp_name || '',
         item.invoice_date || '',
         `"${item.invoice_no ? item.invoice_no.replace(/"/g, '""') : ''}"`,
-        `"${item.subject_email ? item.subject_email.replace(/"/g, '""') : ''}"`,
-        `"${stripHtml(item.description || '').replace(/"/g, '""')}"`,
         item.partner || '',
         item.claim_value || 0,
         item.tax || 0,
         item.due || 0,
-        item.status || '',
         `"${stripHtml(item.remark || '').replace(/"/g, '""')}"`,
         formatDateSafely(item.created_at)
       ].join(',');
@@ -1036,15 +1035,15 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 <tr>
                   {[
                     { key: 'display_id', label: 'ID' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'subject_email', label: 'Sub Email' },
                     { key: 'subsidiary', label: 'Subsidiary' },
                     { key: 'claim_type', label: 'Claim Type' },
                     { key: 'whp_name', label: 'WHP Name' },
                     { key: 'invoice_date', label: 'Invoice Date' },
                     { key: 'invoice_no', label: 'Invoice No' },
-                    { key: 'description', label: 'Description' },
                     { key: 'claim_value', label: 'Claim Value' },
-                    { key: 'due', label: 'Due' },
-                    { key: 'status', label: 'Status' }
+                    { key: 'due', label: 'Due' }
                   ].map((col) => (
                     <th 
                       key={col.key} 
@@ -1087,6 +1086,23 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-medium" style={{ maxWidth: colWidths.display_id }}>
                         {item.display_id || '-'}
                       </td>
+                      <td className="px-4 py-2 truncate" style={{ maxWidth: colWidths.status }} onClick={(e) => e.stopPropagation()}>
+                         {updatingStatusId === item.id ? (
+                           <div className="flex items-center gap-2">
+                             <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-color)]" />
+                             <span className="text-xs text-[var(--text-secondary)]">Updating...</span>
+                           </div>
+                         ) : (
+                           <StatusDropdown 
+                             value={item.status} 
+                             onChange={(newVal) => handleStatusChange(item.id, newVal, item.status)} 
+                             options={STATUS_OPTIONS}
+                           />
+                         )}
+                      </td>
+                      <td className="px-4 py-2 truncate text-[var(--text-secondary)]" style={{ maxWidth: colWidths.subject_email }}>
+                        {item.subject_email || '-'}
+                      </td>
                       <td className="px-4 py-2 truncate text-[var(--text-secondary)]" style={{ maxWidth: colWidths.subsidiary }}>
                         {item.subsidiary || '-'}
                       </td>
@@ -1102,28 +1118,11 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       <td className="px-4 py-2 truncate text-[var(--text-secondary)] font-mono text-xs" style={{ maxWidth: colWidths.invoice_no }}>
                         {item.invoice_no || '-'}
                       </td>
-                      <td className="px-4 py-2 truncate text-[var(--text-secondary)]" style={{ maxWidth: colWidths.description }}>
-                        <span title={item.description}>{item.description || '-'}</span>
-                      </td>
                       <td className="px-4 py-2 truncate text-[var(--text-secondary)] font-mono text-xs" style={{ maxWidth: colWidths.claim_value }}>
                         {formatCurrency(item.claim_value)}
                       </td>
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-mono font-medium text-xs" style={{ maxWidth: colWidths.due }}>
                         {formatCurrency(item.due)}
-                      </td>
-                      <td className="px-4 py-2 truncate" style={{ maxWidth: colWidths.status }} onClick={(e) => e.stopPropagation()}>
-                         {updatingStatusId === item.id ? (
-                           <div className="flex items-center gap-2">
-                             <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent-color)]" />
-                             <span className="text-xs text-[var(--text-secondary)]">Updating...</span>
-                           </div>
-                         ) : (
-                           <StatusDropdown 
-                             value={item.status} 
-                             onChange={(newVal) => handleStatusChange(item.id, newVal, item.status)} 
-                             options={STATUS_OPTIONS}
-                           />
-                         )}
                       </td>
                     </tr>
                   )

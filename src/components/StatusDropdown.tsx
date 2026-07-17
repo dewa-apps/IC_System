@@ -6,6 +6,7 @@ export const getStatusBadgeClass = (status: string) => {
   switch (status) {
     case 'Open': return 'badge-accent';
     case 'In Progress': return 'badge-warning';
+    case 'Waiting Approval': return 'badge-purple';
     case 'Pending Finance': return 'badge-info';
     case 'Done': return 'badge-success';
     case 'Cancelled': return 'badge-neutral';

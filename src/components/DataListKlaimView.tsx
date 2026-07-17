@@ -14,6 +14,7 @@ export interface DataListKlaimViewRef {
 const STATUS_OPTIONS = [
   { value: 'Open', label: 'Open' },
   { value: 'In Progress', label: 'In Progress' },
+  { value: 'Waiting Approval', label: 'Waiting Approval' },
   { value: 'Pending Finance', label: 'Pending Fin' },
   { value: 'Done', label: 'Done' },
   { value: 'Cancelled', label: 'Cancelled' }
@@ -765,7 +766,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 onClick={e => e.stopPropagation()}
               >
                 <div className="space-y-1">
-                  {["Open", "In Progress", "Pending Finance", "Done"].map(st => (
+                  {["Open", "In Progress", "Waiting Approval", "Pending Finance", "Done"].map(st => (
                     <label key={`fs-${st}`} className="flex items-center gap-2 p-1.5 hover:bg-[var(--bg-primary)] rounded cursor-pointer">
                       <input 
                         type="checkbox" 

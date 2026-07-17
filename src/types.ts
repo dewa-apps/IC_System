@@ -122,7 +122,7 @@ export interface DataListKlaim {
   tax: number;
   due: number;
   subsidiary: string;
-  status: 'Open' | 'In Progress' | 'Pending Finance' | 'Done';
+  status: 'Open' | 'In Progress' | 'Waiting Approval' | 'Pending Finance' | 'Done';
   remark: string;
   created_at?: any;
   updated_at?: any;

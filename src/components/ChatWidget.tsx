@@ -40,7 +40,21 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [driveData, setDriveData] = useState<any[]>([]);
+  
+  const DRIVE_STORAGE_KEY = `ic_system_drive_data_${currentUser}`;
+  const [driveData, setDriveData] = useState<any[]>(() => {
+    const saved = localStorage.getItem(DRIVE_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        console.error("Failed to parse drive data");
+      }
+    }
+    return [];
+  });
+  
   const [isFetchingDrive, setIsFetchingDrive] = useState(false);
   const isTypingRef = useRef(false);
   const isDragging = useRef(false);
@@ -51,6 +65,10 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
   }, [messages, CHAT_STORAGE_KEY]);
 
+  useEffect(() => {
+    localStorage.setItem(DRIVE_STORAGE_KEY, JSON.stringify(driveData));
+  }, [driveData, DRIVE_STORAGE_KEY]);
+
   const handleClearHistory = () => {
     const defaultMsg = [{ role: 'model', text: `Hi ${currentUser ? String(currentUser).split('@')[0] : 'User'}! Saya ICAI, kamu bisa menanyakan apapun tentang Tasks, Jadwal, Klaim, Link atau Warehouse data. Tapi saya tidak bisa menerjemahkan Bahasa GOKU .` } as Message];
     setMessages(defaultMsg);
@@ -59,24 +77,15 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
   const handleFetchDriveInfo = async () => {
     setIsFetchingDrive(true);
     try {
-      const gasUrl = "/api/gas-proxy";
-      const payload = {
-        action: 'getDriveFolderText',
-        folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
-      };
-
-      const response = await apiFetch(gasUrl, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      const response = await apiFetch("/api/sync-drive", {
+        method: "POST"
       });
       const resData = await response.json();
       
-      if (resData.status === 'success') {
-        setDriveData(resData.data);
-        setMessages(prev => [...prev, { role: 'model', text: `✅ Berhasil mengekstrak ${resData.data.length} dokumen dari folder Drive untuk referensi tambahan.` }]);
+      if (resData.success) {
+        setMessages(prev => [...prev, { role: 'model', text: `✅ Berhasil mengekstrak ${resData.count} dokumen dari folder Drive dan menyimpannya di backend untuk referensi.` }]);
       } else {
-        throw new Error(resData.message || 'Unknown error');
+        throw new Error(resData.error || 'Unknown error');
       }
     } catch (e: any) {
       console.error(e);
@@ -105,8 +114,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
           jadwal: dataJadwal,
           klaim: dataKlaim,
           links: dataLinks,
-          warehouse: dataWarehouse,
-          driveData: driveData
+          warehouse: dataWarehouse
         }
       };
 

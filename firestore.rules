@@ -178,7 +178,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /test/{docId} {
+    match /globals/{docId} { allow read, write: if true; } match /test/{docId} {
       allow read: if true;
     }
 

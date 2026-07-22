@@ -3,54 +3,17 @@ import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import admin from 'firebase-admin';
+import fs from 'fs';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-  } else {
-    admin.initializeApp();
-  }
-  console.log("Firebase Admin Initialized successfully.");
-} catch (e) {
-  console.log("Failed to initialize Firebase Admin:", e);
-}
-
-import fs from 'fs';
-
-// Helper to get db instance with correct ID
-let dbInstance: admin.firestore.Firestore | null = null;
-function getDb() {
-  if (!dbInstance) {
-    try {
-      const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-      const config = JSON.parse(configStr);
-      dbInstance = admin.firestore();
-      
-      const dbId = process.env.FIREBASE_DATABASE_ID || config.firestoreDatabaseId;
-      if (dbId && dbId !== '(default)') {
-        const { getFirestore } = require('firebase-admin/firestore');
-        dbInstance = getFirestore(undefined, dbId);
-      }
-    } catch (e) {
-      console.warn("Failed to load custom database ID from config, falling back to default.", e);
-      const dbId = process.env.FIREBASE_DATABASE_ID;
-      if (dbId && dbId !== '(default)') {
-        const { getFirestore } = require('firebase-admin/firestore');
-        dbInstance = getFirestore(undefined, dbId);
-      } else {
-        dbInstance = admin.firestore();
-      }
-    }
-  }
-  return dbInstance;
-}
+const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+const config = JSON.parse(configStr);
+const firebaseApp = initializeApp(config);
+const db = getFirestore(firebaseApp, config.firestoreDatabaseId);
 
 async function startServer() {
   const app = express();
@@ -152,7 +115,7 @@ async function startServer() {
               
               await parentDoc.ref.update({
                 subtasks: [...existingSubtasks, newSubtask],
-                updated_at: admin.firestore.FieldValue.serverTimestamp()
+                updated_at: serverTimestamp()
               });
               
               // Log activity for adding subtask
@@ -162,7 +125,7 @@ async function startServer() {
                   user: authorName,
                   action: "Added Subtask via Email",
                   details: `Title: ${newSubtask.title}`,
-                  created_at: admin.firestore.FieldValue.serverTimestamp()
+                  created_at: serverTimestamp()
                 });
               } catch (logError) {
                 console.error("Error creating activity log for subtask:", logError);
@@ -217,8 +180,8 @@ async function startServer() {
         authorName: authorName,
         division: division,
         display_id: newDisplayId,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
       });
 
       // Log activity
@@ -228,7 +191,7 @@ async function startServer() {
           user: authorName,
           action: "Created task",
           details: `Title: ${taskData.title}`,
-          created_at: admin.firestore.FieldValue.serverTimestamp()
+          created_at: serverTimestamp()
         });
       } catch (logError) {
         console.error("Error creating activity log:", logError);
@@ -271,30 +234,169 @@ async function startServer() {
     }
   });
 
+  app.get("/api/test-db", async (req, res) => {
+    try {
+      const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+      const config = JSON.parse(configStr);
+      
+      let defaultWorks = false;
+      let namedWorks = false;
+      let defaultError = "";
+      let namedError = "";
+
+      try {
+        const dbDefault = getFirestore(admin.app());
+        await dbDefault.collection("globals").doc("test").set({a:1});
+        defaultWorks = true;
+      } catch (e: any) {
+        defaultError = e.message;
+      }
+
+      try {
+        const dbNamed = getFirestore(admin.app(), config.firestoreDatabaseId);
+        await dbNamed.collection("globals").doc("test").set({a:1});
+        namedWorks = true;
+      } catch (e: any) {
+        namedError = e.message;
+      }
+      
+      res.json({ defaultWorks, defaultError, namedWorks, namedError, envDbId: process.env.FIREBASE_DATABASE_ID });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Sync Drive endpoint
+  app.post(["/api/sync-drive", "/IC_System/api/sync-drive"], async (req, res) => {
+    try {
+      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
+      const payload = JSON.stringify({
+        action: 'getDriveFolderText',
+        folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
+      });
+      
+      const response = await fetch(gasUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`GAS returned ${response.status}`);
+      }
+      
+      const resData = await response.json();
+      if (resData.status === 'success') {
+         await setDoc(doc(db, "globals", "drive_knowledge_base"), {
+             data: resData.data,
+             updatedAt: serverTimestamp()
+         });
+         res.json({ success: true, count: resData.data.length });
+      } else {
+         res.status(500).json({ error: resData.message || 'Unknown GAS error' });
+      }
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Chat endpoint
   app.post(["/api/chat", "/IC_System/api/chat"], async (req, res) => {
     try {
       const { message, history, contextData, currentUser } = req.body;
-      
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const kiloApiKey = process.env.KILO_API_KEY;
+
+      let cTasks = contextData.tasks || [];
+      let cJadwal = contextData.jadwal || [];
+      let cKlaim = contextData.klaim || [];
+      let cLinks = contextData.links || [];
+      let cWarehouse = contextData.warehouse || [];
+      let cDrive = contextData.driveData || [];
+
+      // Fetch Drive Knowledge Base from Firestore
+      try {
+        const driveDoc = await getDoc(doc(db, "globals", "drive_knowledge_base"));
+        if (driveDoc.exists()) {
+           cDrive = driveDoc.data()?.data || [];
+        }
+      } catch (err) {
+        console.error("Failed to fetch drive data from firestore", err);
+      }
+
+      if (kiloApiKey) {
+         cTasks = cTasks.slice(-30);
+         cJadwal = cJadwal.slice(-30);
+         cKlaim = cKlaim.slice(-30);
+         cLinks = cLinks.slice(-30);
+         cWarehouse = cWarehouse.slice(-30);
+         cDrive = cDrive.slice(-5);
+      }
 
       const systemPrompt = `You are an AI Assistant for the IC System application.
 The user's email is: ${currentUser}. You can address them by their first name if appropriate.
 You have access to the following application data. Please use this data to answer user questions factually.
 
 Here is the data, represented as JSON arrays:
-- Tasks: ${JSON.stringify(contextData.tasks)}
-- Jadwal: ${JSON.stringify(contextData.jadwal)}
-- Klaim: ${JSON.stringify(contextData.klaim)}
-- Links: ${JSON.stringify(contextData.links)}
-- Warehouse: ${JSON.stringify(contextData.warehouse)}
-- Drive Documents: ${JSON.stringify(contextData.driveData)}
+- Tasks: ${JSON.stringify(cTasks)}
+- Jadwal: ${JSON.stringify(cJadwal)}
+- Klaim: ${JSON.stringify(cKlaim)}
+- Links: ${JSON.stringify(cLinks)}
+- Warehouse: ${JSON.stringify(cWarehouse)}
+- Drive Documents: ${JSON.stringify(cDrive)}
 
 If the user asks a question about schedules (jadwal) this month, look at the Jadwal data.
 If asked about tasks, look at the Tasks data.
 If the user asks about knowledge base or manual docs, check the Drive Documents.
 Be concise and helpful. Format your response in Markdown.`;
+
+      if (kiloApiKey) {
+        const { default: OpenAI } = await import("openai");
+        const openai = new OpenAI({
+          apiKey: kiloApiKey,
+          baseURL: "https://api.kilo.ai/api/gateway"
+        });
+
+        const messages: any[] = [
+          { role: 'system', content: systemPrompt }
+        ];
+
+        if (history && history.length > 0) {
+          history.forEach((m: any) => {
+            messages.push({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.text
+            });
+          });
+        }
+        
+        messages.push({
+          role: 'user',
+          content: message
+        });
+
+        const stream = await openai.chat.completions.create({
+          model: "openrouter/free", // Kilo API model: kilo-auto/free
+          messages: messages,
+          temperature: 0.2,
+          stream: true,
+        });
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+             res.write(content);
+          }
+        }
+        res.end();
+        return;
+      }
+      
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
       const chatOptions: any = {
         model: "gemini-2.5-flash",

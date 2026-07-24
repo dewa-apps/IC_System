@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2, CloudDownload } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User as UserIcon, Loader2, Trash2, CloudDownload, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { Task, DataListLink, DataListJadwal, DataListKlaim } from '../types';
@@ -94,7 +94,46 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
     setIsFetchingDrive(false);
   };
 
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = async () => {
+       const base64 = reader.result as string;
+       const fileName = file.name;
+       const mimeType = file.type || "text/plain";
+       
+       setMessages(prev => [...prev, { role: 'user', text: `Mengunggah file ${fileName} untuk knowledge base...` }]);
+       setIsTyping(true);
+       
+       try {
+          const res = await apiFetch("/api/upload-knowledge", {
+             method: "POST",
+             body: JSON.stringify({ fileName, mimeType, base64 })
+          });
+          const data = await res.json();
+          if (data.success) {
+             setMessages(prev => [...prev, { role: 'model', text: `✅ Berhasil mengunggah file **${fileName}** ke GDrive dan sinkronisasi ke Firebase knowledge base. Sekarang saya bisa membaca isinya!` }]);
+          } else {
+             throw new Error(data.error || "Unknown error");
+          }
+       } catch (err: any) {
+          setMessages(prev => [...prev, { role: 'model', text: `❌ Gagal mengunggah file: ${err.message}` }]);
+       } finally {
+          setIsTyping(false);
+          if (e.target) e.target.value = ''; // reset
+       }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSend = async () => {
+
     if (!input.trim()) return;
     
     const userMessage = input.trim();
@@ -154,12 +193,41 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
         const textChunk = decoder.decode(value, { stream: true });
         if (textChunk) {
           fullResponse += textChunk;
+          
+          let displayResponse = fullResponse;
+          // Hide the tag from UI while streaming
+          displayResponse = displayResponse.replace(/\[SAVE_KNOWLEDGE\].*?(\[\/SAVE_KNOWLEDGE\]|$)/gs, '*Menyimpan knowledge...*');
+          
           setMessages(prev => {
             const newMsgs = [...prev];
-            newMsgs[newMsgs.length - 1].text = fullResponse;
+            newMsgs[newMsgs.length - 1].text = displayResponse;
             return newMsgs;
           });
         }
+      }
+      
+      // Process tag after stream finishes
+      const tagMatch = fullResponse.match(/\[SAVE_KNOWLEDGE\](.*?)\[\/SAVE_KNOWLEDGE\]/s);
+      if (tagMatch && tagMatch[1]) {
+         const knowledgeText = tagMatch[1].trim();
+         try {
+            const saveRes = await apiFetch("/api/save-manual-knowledge", {
+               method: "POST",
+               body: JSON.stringify({ text: knowledgeText })
+            });
+            const saveResData = await saveRes.json();
+            if (saveResData.success) {
+               let finalMsg = fullResponse.replace(/\[SAVE_KNOWLEDGE\].*?\[\/SAVE_KNOWLEDGE\]/gs, '');
+               finalMsg += "\n\n✅ *Knowledge berhasil disimpan ke sistem!*";
+               setMessages(prev => {
+                 const newMsgs = [...prev];
+                 newMsgs[newMsgs.length - 1].text = finalMsg.trim();
+                 return newMsgs;
+               });
+            }
+         } catch (e) {
+            console.error("Failed to save knowledge", e);
+         }
       }
     } catch (error: any) {
       console.error("Chat error:", error);
@@ -288,8 +356,14 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
                 }}
                 className="flex items-center gap-2 bg-[var(--bg-body)] border border-[var(--border-color)] rounded-full px-4 py-2"
               >
+                
+                <label className="p-1.5 text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] transition-colors">
+                  <Paperclip className="w-4 h-4" />
+                  <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.csv,.json,.pdf,.doc,.docx" />
+                </label>
                 <input
                   type="text"
+
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask a question..."

@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from 'fs';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp, collection, query, where, limit, getDocs, updateDoc, addDoc, runTransaction } from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,25 +28,17 @@ async function startServer() {
     try {
       const { secret, taskData } = req.body;
       
-      // Simple secret check (in a real app, use environment variables)
       if (secret !== "SIRCLO_INVENTORY_SECRET_TASK") {
         return res.status(403).json({ error: "Unauthorized" });
       }
-
       if (!taskData) {
         return res.status(400).json({ error: "No taskData provided" });
       }
 
-      const db = getDb();
-
-      // Find division based on requestor
       let division = "";
       if (taskData.requestor) {
-        const pastTasks = await db.collection("tasks")
-          .where("requestor", "==", taskData.requestor)
-          .where("division", "!=", "")
-          .limit(1)
-          .get();
+        const pastTasksQuery = query(collection(db, "tasks"), where("requestor", "==", taskData.requestor), where("division", "!=", ""), limit(1));
+        const pastTasks = await getDocs(pastTasksQuery);
         if (!pastTasks.empty && pastTasks.docs[0].data().division) {
           division = pastTasks.docs[0].data().division;
         }
@@ -63,11 +55,8 @@ async function startServer() {
         if (searchEmail) searchEmail = searchEmail.trim();
         
         if (searchEmail) {
-          const usersMatch = await db.collection("users")
-            .where("email", "==", searchEmail)
-            .limit(1)
-            .get();
-            
+          const usersMatchQuery = query(collection(db, "users"), where("email", "==", searchEmail), limit(1));
+          const usersMatch = await getDocs(usersMatchQuery);
           if (!usersMatch.empty && usersMatch.docs[0].data().name) {
              authorName = usersMatch.docs[0].data().name;
           } else if ((taskData.authorId || "").includes('<')) {
@@ -84,25 +73,20 @@ async function startServer() {
         parent_id_type: typeof taskData.parent_task_id 
       };
 
-      // Check if this task should be appended as a subtask to an existing task
       if (taskData.parent_task_id) {
         const parentId = String(taskData.parent_task_id).trim().toUpperCase();
         debugInfo.parsed_parent_id = parentId;
         
         try {
-          const parentTasks = await db.collection("tasks")
-            .where("display_id", "==", parentId)
-            .limit(1)
-            .get();
-            
+          const parentTasksQuery = query(collection(db, "tasks"), where("display_id", "==", parentId), limit(1));
+          const parentTasks = await getDocs(parentTasksQuery);
           debugInfo.is_parent_empty = parentTasks.empty;
-            
+          
           if (!parentTasks.empty) {
             const parentDoc = parentTasks.docs[0];
             const parentData = parentDoc.data();
             const existingSubtasks = parentData.subtasks || [];
             
-            // Prevent duplicates by checking if subtask with same title exists
             const isDuplicate = existingSubtasks.some((st: any) => st.title === taskData.title);
             
             if (!isDuplicate) {
@@ -113,14 +97,13 @@ async function startServer() {
                 due_date: taskData.due_date || ''
               };
               
-              await parentDoc.ref.update({
+              await updateDoc(doc(db, "tasks", parentDoc.id), {
                 subtasks: [...existingSubtasks, newSubtask],
                 updated_at: serverTimestamp()
               });
-              
-              // Log activity for adding subtask
+
               try {
-                await db.collection("activity_log").add({
+                await addDoc(collection(db, "activity_log"), {
                   task_id: parentDoc.id,
                   user: authorName,
                   action: "Added Subtask via Email",
@@ -131,10 +114,8 @@ async function startServer() {
                 console.error("Error creating activity log for subtask:", logError);
               }
             }
-            
             return res.status(200).json({ success: true, message: "Added as subtask", id: parentDoc.id, debug: debugInfo });
           } else {
-            // Jika tidak ditemukan, gagalkan secara tegas agar pengguna tahu!
             return res.status(200).json({ 
               success: false, 
               message: `Gagal: Parent task ${parentId} tidak ditemukan di database. Pastikan ID Task sudah benar.`,
@@ -150,23 +131,19 @@ async function startServer() {
         }
       }
 
-      // Duplicate check based on email thread id or message id for main tasks
       if (taskData.email_thread_id) {
-        const existingInfo = await db.collection("tasks")
-          .where("email_thread_id", "==", taskData.email_thread_id)
-          .limit(1)
-          .get();
+        const existingInfoQuery = query(collection(db, "tasks"), where("email_thread_id", "==", taskData.email_thread_id), limit(1));
+        const existingInfo = await getDocs(existingInfoQuery);
         if (!existingInfo.empty) {
           return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
         }
       }
 
-      // Generate sequence display_id
-      const metadataRef = db.collection('metadata').doc('taskSequence');
-      const newDisplayId = await db.runTransaction(async (transaction) => {
+      const metadataRef = doc(db, 'metadata', 'taskSequence');
+      const newDisplayId = await runTransaction(db, async (transaction) => {
         const metadataDoc = await transaction.get(metadataRef);
         let currentMax = 0;
-        if (metadataDoc.exists && metadataDoc.data()?.lastNumber) {
+        if (metadataDoc.exists() && metadataDoc.data()?.lastNumber) {
           currentMax = metadataDoc.data()?.lastNumber;
         }
         const nextNum = currentMax + 1;
@@ -174,8 +151,7 @@ async function startServer() {
         return `IC-${String(nextNum).padStart(5, '0')}`;
       });
 
-      // Create a task
-      const result = await db.collection("tasks").add({
+      const result = await addDoc(collection(db, "tasks"), {
         ...taskData,
         authorName: authorName,
         division: division,
@@ -184,9 +160,8 @@ async function startServer() {
         updated_at: serverTimestamp(),
       });
 
-      // Log activity
       try {
-        await db.collection("activity_log").add({
+        await addDoc(collection(db, "activity_log"), {
           task_id: result.id,
           user: authorName,
           action: "Created task",
@@ -234,39 +209,56 @@ async function startServer() {
     }
   });
 
-  app.get("/api/test-db", async (req, res) => {
+  app.post(["/api/upload-knowledge", "/IC_System/api/upload-knowledge"], async (req, res) => {
     try {
-      const configStr = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-      const config = JSON.parse(configStr);
+      const { fileName, mimeType, base64 } = req.body;
+      const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
       
-      let defaultWorks = false;
-      let namedWorks = false;
-      let defaultError = "";
-      let namedError = "";
-
-      try {
-        const dbDefault = getFirestore(admin.app());
-        await dbDefault.collection("globals").doc("test").set({a:1});
-        defaultWorks = true;
-      } catch (e: any) {
-        defaultError = e.message;
-      }
-
-      try {
-        const dbNamed = getFirestore(admin.app(), config.firestoreDatabaseId);
-        await dbNamed.collection("globals").doc("test").set({a:1});
-        namedWorks = true;
-      } catch (e: any) {
-        namedError = e.message;
-      }
+      // Upload to Drive
+      const uploadPayload = JSON.stringify({
+        action: 'uploadKnowledgeFile',
+        fileName,
+        mimeType,
+        base64
+      });
       
-      res.json({ defaultWorks, defaultError, namedWorks, namedError, envDbId: process.env.FIREBASE_DATABASE_ID });
+      const uploadRes = await fetch(gasUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: uploadPayload
+      });
+      
+      if (!uploadRes.ok) throw new Error("Failed to upload to Drive via GAS");
+      const uploadData = await uploadRes.json();
+      if (uploadData.status !== 'success') throw new Error(uploadData.message || "Unknown error during upload");
+
+      // Now sync from Drive
+      const syncPayload = JSON.stringify({
+        action: 'getDriveFolderText',
+        folderId: '1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM'
+      });
+      const syncRes = await fetch(gasUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: syncPayload
+      });
+      if (!syncRes.ok) throw new Error("Failed to sync from Drive via GAS");
+      const syncData = await syncRes.json();
+      if (syncData.status === 'success') {
+         await setDoc(doc(db, "globals", "drive_knowledge_base"), {
+             data: syncData.data,
+             updatedAt: serverTimestamp()
+         }, { merge: true }); // use merge just in case
+         res.json({ success: true, message: "File uploaded and synced successfully", count: syncData.data.length });
+      } else {
+         throw new Error(syncData.message || "Failed to sync");
+      }
     } catch (e: any) {
+      console.error("Upload Knowledge Error:", e);
       res.status(500).json({ error: e.message });
     }
   });
 
-  // Sync Drive endpoint
   app.post(["/api/sync-drive", "/IC_System/api/sync-drive"], async (req, res) => {
     try {
       const gasUrl = "https://script.google.com/macros/s/AKfycbwlC8ARWAHK6CtkdtHeOpqDw6pIjEAV3jxTrtCabiTgX5kDqlcaPOiO9NCWVDQNvqOgsQ/exec";
@@ -290,7 +282,8 @@ async function startServer() {
          await setDoc(doc(db, "globals", "drive_knowledge_base"), {
              data: resData.data,
              updatedAt: serverTimestamp()
-         });
+         }, { merge: true });
+         
          res.json({ success: true, count: resData.data.length });
       } else {
          res.status(500).json({ error: resData.message || 'Unknown GAS error' });
@@ -302,6 +295,25 @@ async function startServer() {
   });
 
   // Chat endpoint
+  
+  app.post(["/api/save-manual-knowledge", "/IC_System/api/save-manual-knowledge"], async (req, res) => {
+    try {
+       const { text } = req.body;
+       const docRef = doc(db, "globals", "drive_knowledge_base");
+       const docSnap = await getDoc(docRef);
+       let manualData = [];
+       if (docSnap.exists()) {
+          manualData = docSnap.data()?.manualData || [];
+       }
+       manualData.push({ fileName: "Manual Knowledge " + new Date().toLocaleString(), content: text });
+       
+       await setDoc(docRef, { manualData, updatedAt: serverTimestamp() }, { merge: true });
+       res.json({ success: true });
+    } catch (e: any) {
+       res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post(["/api/chat", "/IC_System/api/chat"], async (req, res) => {
     try {
       const { message, history, contextData, currentUser } = req.body;
@@ -318,7 +330,9 @@ async function startServer() {
       try {
         const driveDoc = await getDoc(doc(db, "globals", "drive_knowledge_base"));
         if (driveDoc.exists()) {
-           cDrive = driveDoc.data()?.data || [];
+           const driveData = driveDoc.data()?.data || [];
+           const manualData = driveDoc.data()?.manualData || [];
+           cDrive = [...driveData, ...manualData];
         }
       } catch (err) {
         console.error("Failed to fetch drive data from firestore", err);
@@ -348,7 +362,10 @@ Here is the data, represented as JSON arrays:
 If the user asks a question about schedules (jadwal) this month, look at the Jadwal data.
 If asked about tasks, look at the Tasks data.
 If the user asks about knowledge base or manual docs, check the Drive Documents.
-Be concise and helpful. Format your response in Markdown.`;
+Be concise and helpful. Format your response in Markdown.
+IMPORTANT: If the user asks you to save something as knowledge (e.g., "jadikan ini knowledge", "simpan ini sebagai referensi"), you MUST extract the knowledge they want to save and output this exact tag anywhere in your response:
+[SAVE_KNOWLEDGE]the knowledge text to save[/SAVE_KNOWLEDGE]
+The system will detect this tag and save it to the knowledge base automatically.`;
 
       if (kiloApiKey) {
         const { default: OpenAI } = await import("openai");
@@ -369,7 +386,7 @@ Be concise and helpful. Format your response in Markdown.`;
             });
           });
         }
-        
+
         messages.push({
           role: 'user',
           content: message

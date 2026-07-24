@@ -460,6 +460,28 @@ function doPost(e) {
     }
     
     // Membaca konten teks dari file (Docs/Sheets) di dalam Drive Folder spesifik untuk diolah AI
+    
+    if (data.action === 'uploadKnowledgeFile') {
+      var folderId = "1fmZcQre4WqR6o-K5mJVwTtTgjiNX8MlM";
+      var folder = DriveApp.getFolderById(folderId);
+      
+      var base64Data = data.base64;
+      if (base64Data.indexOf(',') !== -1) {
+        base64Data = base64Data.split(',')[1];
+      }
+      
+      var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), data.mimeType, data.fileName);
+      var file = folder.createFile(blob);
+      
+      // If the file is a csv or text, we can convert it to sheets/docs but we can also leave it as is.
+      // Wait, let's just create it directly.
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        fileUrl: file.getUrl(),
+        fileId: file.getId()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'getDriveFolderText') {
       var folderIdForAI = data.folderId;
       var fileDataList = [];
@@ -494,9 +516,9 @@ function doPost(e) {
               aiContent = "File ini ada (" + aiName + ") namun format (" + aiMimeType + ") tidak direkomendasikan untuk dibaca teksnya otomatis. Gunakan Google Docs atau Google Sheets.";
             }
             
-            // Batasi panjang untuk mencegah overload memory (maks 15000 karakter per file)
-            if (aiContent.length > 15000) {
-              aiContent = aiContent.substring(0, 15000) + "... [terpotong]";
+            // Batasi panjang untuk mencegah overload memory (maks 150000 karakter per file)
+            if (aiContent.length > 150000) {
+              aiContent = aiContent.substring(0, 150000) + "... [terpotong]";
             }
             
             fileDataList.push({

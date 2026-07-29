@@ -14,6 +14,7 @@ export default function EmbedView({ currentUser }: EmbedViewProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({ title: '', url: '', type: 'other' });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,16 +60,20 @@ export default function EmbedView({ currentUser }: EmbedViewProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to remove this dashboard?")) {
-      try {
-        await deleteDoc(doc(db, 'embed_dashboards', id));
-        if (activeTab === id) {
-          setActiveTab(embeds.find(e => e.id !== id)?.id || null);
-        }
-      } catch (error) {
-        console.error("Error deleting embed:", error);
+  const handleDeleteClick = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await deleteDoc(doc(db, 'embed_dashboards', deleteId));
+      if (activeTab === deleteId) {
+        setActiveTab(embeds.find(e => e.id !== deleteId)?.id || null);
       }
+      setDeleteId(null);
+    } catch (error) {
+      console.error("Error deleting embed:", error);
     }
   };
 
@@ -107,7 +112,7 @@ export default function EmbedView({ currentUser }: EmbedViewProps) {
               <button onClick={() => handleEdit(embed)} className="p-1 hover:bg-black/10 rounded" title="Edit">
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => handleDelete(embed.id)} className="p-1 hover:bg-black/10 rounded text-[var(--danger-color)]" title="Delete">
+              <button onClick={() => handleDeleteClick(embed.id)} className="p-1 hover:bg-black/10 rounded text-[var(--danger-color)]" title="Delete">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -240,6 +245,32 @@ export default function EmbedView({ currentUser }: EmbedViewProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--bg-surface)] w-full max-w-sm rounded-xl shadow-xl overflow-hidden border border-[var(--border-color)]">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Delete Dashboard</h3>
+              <p className="text-sm text-[var(--text-secondary)]">Are you sure you want to remove this dashboard? This action cannot be undone.</p>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-[var(--border-color)] bg-[var(--bg-secondary)]">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] rounded-lg transition-colors border border-[var(--border-color)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-medium bg-[var(--danger-color)] text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

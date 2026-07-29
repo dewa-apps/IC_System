@@ -103,6 +103,7 @@ export interface DataListLink {
   link_url: string;
   description: string;
   note: string;
+  clickCount?: number;
   created_at?: string;
   updated_at?: string;
 }

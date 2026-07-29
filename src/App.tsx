@@ -79,6 +79,7 @@ import AuditLogView from './components/AuditLogView';
 import RichTextEditor from './components/RichTextEditor';
 import GanttView from './components/GanttView';
 import ChatWidget from './components/ChatWidget';
+import TopLinksMenu from './components/TopLinksMenu';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -4491,6 +4492,7 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+      <TopLinksMenu />
     </div>
   );
 }

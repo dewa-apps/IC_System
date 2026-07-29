@@ -299,6 +299,16 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
     }
   };
 
+  const handleLinkClick = async (link: DataListLink) => {
+    try {
+      await updateDoc(doc(db, 'data_list_link', link.id), {
+        clickCount: (link.clickCount || 0) + 1
+      });
+    } catch (e) {
+      console.error("Failed to update click count", e);
+    }
+  };
+
   const onRowsPerPageChange = (val: number) => {
     setRowsPerPage(val);
     setCurrentPage(1);
@@ -424,7 +434,7 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-[var(--accent-color)] truncate">
-                      <a href={link.link_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="hover:underline flex items-center gap-1.5 w-full whitespace-nowrap overflow-hidden text-ellipsis">
+                      <a href={link.link_url} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); handleLinkClick(link); }} className="hover:underline flex items-center gap-1.5 w-full whitespace-nowrap overflow-hidden text-ellipsis">
                         <span className="truncate">{link.link_name}</span>
                         <ExternalLink className="w-3 h-3 shrink-0" />
                       </a>

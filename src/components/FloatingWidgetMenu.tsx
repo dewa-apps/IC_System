@@ -1,15 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageSquare, LinkIcon, X, Plus, Layers } from 'lucide-react';
+import { MessageSquare, LinkIcon, X, Plus, Layers, Edit3 } from 'lucide-react';
 import ChatWidget from './ChatWidget';
 import TopLinksMenu from './TopLinksMenu';
+import QuickNotes from './QuickNotes';
 
 interface FloatingWidgetMenuProps {
   chatProps: any;
 }
 
 export default function FloatingWidgetMenu({ chatProps }: FloatingWidgetMenuProps) {
-  const [activeWidget, setActiveWidget] = useState<'chat' | 'topLinks' | null>(null);
+  const [activeWidget, setActiveWidget] = useState<'chat' | 'topLinks' | 'quickNotes' | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isDragging = useRef(false);
 
@@ -22,7 +23,7 @@ export default function FloatingWidgetMenu({ chatProps }: FloatingWidgetMenuProp
     setIsMenuOpen(!isMenuOpen);
   };
 
-  const openWidget = (widget: 'chat' | 'topLinks') => {
+  const openWidget = (widget: 'chat' | 'topLinks' | 'quickNotes') => {
     setActiveWidget(widget);
     setIsMenuOpen(false);
   };
@@ -45,8 +46,15 @@ export default function FloatingWidgetMenu({ chatProps }: FloatingWidgetMenuProp
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.9 }}
               transition={{ duration: 0.15 }}
-              className="absolute bottom-16 right-0 flex flex-col gap-2 mb-2"
+              className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 flex flex-col gap-2 min-w-max"
             >
+              <button
+                onClick={() => openWidget('quickNotes')}
+                className="flex items-center gap-3 bg-[var(--bg-surface)] border border-[var(--border-color)] px-4 py-2.5 rounded-full shadow-lg hover:bg-[var(--bg-secondary)] transition-colors whitespace-nowrap text-sm font-medium text-[var(--text-primary)]"
+              >
+                <Edit3 className="w-4 h-4 text-[var(--accent-color)]" />
+                Quick Notes
+              </button>
               <button
                 onClick={() => openWidget('topLinks')}
                 className="flex items-center gap-3 bg-[var(--bg-surface)] border border-[var(--border-color)] px-4 py-2.5 rounded-full shadow-lg hover:bg-[var(--bg-secondary)] transition-colors whitespace-nowrap text-sm font-medium text-[var(--text-primary)]"
@@ -104,6 +112,10 @@ export default function FloatingWidgetMenu({ chatProps }: FloatingWidgetMenuProp
       <TopLinksMenu 
         isOpen={activeWidget === 'topLinks'} 
         onClose={() => setActiveWidget(null)} 
+      />
+      <QuickNotes
+        isOpen={activeWidget === 'quickNotes'}
+        onClose={() => setActiveWidget(null)}
       />
     </>
   );

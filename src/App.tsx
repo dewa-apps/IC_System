@@ -81,6 +81,7 @@ import GanttView from './components/GanttView';
 import ChatWidget from './components/ChatWidget';
 import TopLinksMenu from './components/TopLinksMenu';
 import FloatingWidgetMenu from './components/FloatingWidgetMenu';
+import CommandPalette from './components/CommandPalette';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -1059,6 +1060,7 @@ export default function App() {
   const [selectedLinkType, setSelectedLinkType] = useState<LinkType>('relates_to');
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [currentView, setCurrentView] = useState<string>('tasks');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'list' | 'gantt'>('board');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -1111,6 +1113,18 @@ export default function App() {
       return updated;
     });
   };
+
+  // Command Palette Keyboard Shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Pagination, Sort, Filter states
   const [currentPage, setCurrentPage] = useState(1);
@@ -4495,6 +4509,11 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+      <CommandPalette 
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={(view) => setCurrentView(view)}
+      />
     </div>
   );
 }

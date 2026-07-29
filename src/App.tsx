@@ -80,6 +80,7 @@ import RichTextEditor from './components/RichTextEditor';
 import GanttView from './components/GanttView';
 import ChatWidget from './components/ChatWidget';
 import TopLinksMenu from './components/TopLinksMenu';
+import FloatingWidgetMenu from './components/FloatingWidgetMenu';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -3525,13 +3526,15 @@ export default function App() {
         )}
         
         {currentUser && currentUser.email && (
-          <ChatWidget 
-            tasks={tasks}
-            dataJadwal={dataJadwal}
-            dataKlaim={dataKlaim}
-            dataLinks={dataLinks}
-            dataWarehouse={dataWarehouse}
-            currentUser={currentUser.email}
+          <FloatingWidgetMenu
+            chatProps={{
+              tasks,
+              dataJadwal,
+              dataKlaim,
+              dataLinks,
+              dataWarehouse,
+              currentUser: currentUser.email
+            }}
           />
         )}
       </div>
@@ -4492,7 +4495,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-      <TopLinksMenu />
     </div>
   );
 }

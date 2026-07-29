@@ -17,10 +17,11 @@ interface ChatWidgetProps {
   dataLinks: DataListLink[];
   dataWarehouse: any[];
   currentUser: string;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, dataWarehouse, currentUser }: ChatWidgetProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, dataWarehouse, currentUser, isOpen, onClose }: ChatWidgetProps) {
   const CHAT_STORAGE_KEY = `ic_system_chat_hx_${currentUser}`;
   
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -240,26 +241,6 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
 
   return (
     <>
-      <motion.button
-        drag
-        dragMomentum={false}
-        onDragStart={() => { isDragging.current = true; }}
-        onDragEnd={() => { 
-          setTimeout(() => { isDragging.current = false; }, 200);
-        }}
-        onClick={(e) => {
-          if (isDragging.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          setIsOpen(true);
-        }}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--accent-color)] text-[var(--text-on-accent)] rounded-full shadow-lg flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-[var(--accent-hover)] transition-colors z-40"
-      >
-        <MessageSquare className="w-6 h-6" />
-      </motion.button>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -292,7 +273,7 @@ export default function ChatWidget({ tasks, dataJadwal, dataKlaim, dataLinks, da
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <button 
-                  onClick={() => setIsOpen(false)}
+                  onClick={onClose}
                   className="p-1.5 hover:bg-white/20 rounded-full transition-colors flex items-center justify-center"
                 >
                   <X className="w-4 h-4" />

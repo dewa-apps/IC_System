@@ -5,10 +5,13 @@ import { collection, query, orderBy, limit, onSnapshot, updateDoc, doc } from 'f
 import { db } from '../firebase';
 import { DataListLink } from '../types';
 
-export default function TopLinksMenu() {
-  const [isOpen, setIsOpen] = useState(false);
+interface TopLinksMenuProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function TopLinksMenu({ isOpen, onClose }: TopLinksMenuProps) {
   const [topLinks, setTopLinks] = useState<DataListLink[]>([]);
-  const isDragging = React.useRef(false);
 
   useEffect(() => {
     const q = query(
@@ -41,7 +44,7 @@ export default function TopLinksMenu() {
   };
 
   return (
-    <div className="fixed bottom-6 left-20 z-[200]">
+    <>
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -49,7 +52,7 @@ export default function TopLinksMenu() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="absolute bottom-16 left-0 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            className="fixed bottom-24 right-6 w-80 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-xl overflow-hidden flex flex-col z-[200]"
           >
             <div className="px-4 py-3 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-between">
               <h3 className="text-sm font-bold flex items-center gap-2">
@@ -57,7 +60,7 @@ export default function TopLinksMenu() {
                 Top 10 Accessed Links
               </h3>
               <button 
-                onClick={() => setIsOpen(false)}
+                onClick={onClose}
                 className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -109,48 +112,6 @@ export default function TopLinksMenu() {
         )}
       </AnimatePresence>
 
-      <motion.button
-        drag
-        dragMomentum={false}
-        onDragStart={() => { isDragging.current = true; }}
-        onDragEnd={() => { 
-          setTimeout(() => { isDragging.current = false; }, 200);
-        }}
-        onClick={(e) => {
-          if (isDragging.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          setIsOpen(!isOpen);
-        }}
-        className="w-14 h-14 bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)] rounded-full shadow-xl flex items-center justify-center cursor-grab active:cursor-grabbing z-40"
-        title="Top Links"
-      >
-        <AnimatePresence mode="wait">
-          {isOpen ? (
-            <motion.div
-              key="close"
-              initial={{ rotate: -90, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: 90, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <ChevronDown className="w-6 h-6" />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="open"
-              initial={{ rotate: 90, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: -90, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <LinkIcon className="w-6 h-6" />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.button>
-    </div>
+    </>
   );
 }

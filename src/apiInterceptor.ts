@@ -35,7 +35,7 @@ export const formatDoc = (docSnapshot: any) => {
 export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   
-  if (url.startsWith('/api/gas-proxy') || url.startsWith('/api/chat') || url.startsWith('/api/webhooks')) {
+    if (url.startsWith('/api/gas-proxy') || url.startsWith('/api/chat') || url.startsWith('/api/webhooks') || url.startsWith('/api/sync-drive') || url.startsWith('/api/upload-knowledge') || url.startsWith('/api/save-manual-knowledge')) {
     let fetchUrl = url;
     if (import.meta.env.VITE_API_URL) {
       const apiUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');

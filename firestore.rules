@@ -172,6 +172,13 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
+    match /embed_dashboards/{embedId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
     match /metadata/{docId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();

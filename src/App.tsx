@@ -44,7 +44,8 @@ import {
   History,
   Lock,
   Bell,
-  RefreshCw
+  RefreshCw,
+  LayoutDashboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -82,6 +83,7 @@ import ChatWidget from './components/ChatWidget';
 import TopLinksMenu from './components/TopLinksMenu';
 import FloatingWidgetMenu from './components/FloatingWidgetMenu';
 import CommandPalette from './components/CommandPalette';
+import EmbedView from './components/EmbedView';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -2717,6 +2719,14 @@ export default function App() {
               ]}
             />
             <SidebarItem 
+              icon={<LayoutDashboard className="w-5 h-5" />} 
+              label="Dashboards" 
+              active={currentView === 'embeds'}
+              collapsed={isSidebarCollapsed} 
+              visible={isSidebarVisible}
+              onClick={() => setCurrentView('embeds')}
+            />
+            <SidebarItem 
               icon={<BarChart3 className="w-5 h-5" />} 
               label="Reports" 
               active={currentView === 'reports'}
@@ -2789,6 +2799,7 @@ export default function App() {
               <h2 className="text-lg font-bold text-[var(--text-primary)]">
                 {currentView === 'settings' ? 'Settings' 
                   : currentView === 'reports' ? 'Reports' 
+                  : currentView === 'embeds' ? 'Dashboards'
                   : currentView === 'audit' ? 'Audit Log' 
                   : currentView === 'data-list-link' ? 'Data List Link'
                   : currentView === 'data-list-jadwal' ? 'Data List Jadwal'
@@ -3351,6 +3362,8 @@ export default function App() {
             backupConfig={backupConfig}
             updateBackupConfig={updateBackupConfig}
           />
+        ) : currentView === 'embeds' ? (
+          <EmbedView currentUser={currentUser} />
         ) : currentView === 'reports' ? (
           <ReportsView tasks={tasks} />
         ) : currentView === 'audit' ? (

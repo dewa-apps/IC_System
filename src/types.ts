@@ -144,3 +144,12 @@ export interface TaskLink {
   target_task_status?: TaskStatus;
   target_task_display_id?: string;
 }
+
+export interface EmbedDashboard {
+  id: string;
+  title: string;
+  url: string;
+  type: 'looker' | 'google_sites' | 'other';
+  created_at?: any;
+  updated_at?: any;
+}

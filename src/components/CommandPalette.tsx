@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Link as LinkIcon, CalendarDays, Hash, Settings, BarChart3, History, FileText, CheckSquare, List } from 'lucide-react';
+import { Search, Link as LinkIcon, CalendarDays, Hash, Settings, BarChart3, History, FileText, CheckSquare, List, LayoutDashboard } from 'lucide-react';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -43,6 +43,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }: CommandP
     { id: 'data-list-jadwal', name: 'Data List Jadwal', icon: CalendarDays },
     { id: 'data-list-klaim', name: 'Data List Klaim', icon: Hash },
     { id: 'data-list-warehouse', name: 'Data List Warehouse', icon: List },
+    { id: 'embeds', name: 'Dashboards', icon: LayoutDashboard },
     { id: 'reports', name: 'Reports', icon: FileText },
     { id: 'audit', name: 'Audit Log', icon: History },
     { id: 'settings', name: 'Settings', icon: Settings },

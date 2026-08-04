@@ -1599,7 +1599,7 @@ export default function App() {
         });
         if (!res.ok) {
           const errTxt = await res.text().catch(() => "");
-          console.error(`Failed to send backup for ${action}. ${errTxt}`);
+          console.warn(`Failed to send backup for ${action}. ${errTxt}`);
           throw new Error(`Backup failed for ${action}`);
         }
         console.log(`Finished backup for ${action}`);
@@ -1681,7 +1681,7 @@ export default function App() {
         await sendAll(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
       }
     } catch (err) {
-      console.error('Auto backup failed', err);
+      console.warn('Auto backup failed', err);
       throw err;
     }
   };

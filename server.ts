@@ -200,11 +200,11 @@ async function startServer() {
          return res.status(response.status).json(json);
       } else {
          const text = await response.text();
-         console.error("GAS proxy returned non-JSON:", text.substring(0, 200)); // Log first 200 chars of HTML
+         console.warn("GAS proxy returned non-JSON:", text.substring(0, 200)); // Log first 200 chars of HTML
          return res.status(500).json({ error: "Received non-JSON response from Google Apps Script", details: text.substring(0, 100) });
       }
     } catch (error: any) {
-      console.error("GAS proxy failed", error);
+      console.warn("GAS proxy failed", error);
       return res.status(500).json({ error: error.message });
     }
   });

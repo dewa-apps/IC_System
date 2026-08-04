@@ -1,3 +1,14 @@
+export interface BackupConfig {
+  enabled: boolean;
+  intervals?: {
+    tasks: number;
+    jadwal: number;
+    klaim: number;
+    links: number;
+  };
+  intervalMinutes?: number;
+}
+
 export interface User {
   id: string;
   name: string;

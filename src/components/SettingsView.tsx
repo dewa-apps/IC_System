@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { auth, db } from '../firebase';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { User, Bell, Palette, Users, Trash2, Edit2, Plus, Loader2, Database, AlertTriangle } from 'lucide-react';
-import { User as AppUser, Task } from '../types';
+import { User as AppUser, Task, BackupConfig } from '../types';
 import { apiFetch } from '../apiInterceptor';
 import toast from 'react-hot-toast';
 
@@ -14,8 +14,8 @@ interface SettingsViewProps {
   setTheme?: (theme: 'light' | 'dark' | 'system') => void;
   notificationConfig?: { email: boolean; inApp: boolean };
   updateNotificationConfig?: (key: 'email' | 'inApp', value: boolean) => void;
-  backupConfig: { enabled: boolean; intervalMinutes: number };
-  updateBackupConfig: (config: { enabled: boolean; intervalMinutes: number }) => void;
+  backupConfig: BackupConfig;
+  updateBackupConfig: (config: BackupConfig) => void;
 }
 
 export default function SettingsView({ 
@@ -615,18 +615,36 @@ export default function SettingsView({
                       </div>
 
                       {backupConfig.enabled && (
-                        <div className="flex items-center gap-3">
-                          <label className="text-sm text-[var(--text-primary)] font-medium">Backup Interval:</label>
-                          <select 
-                            value={backupConfig.intervalMinutes}
-                            onChange={(e) => updateBackupConfig({ ...backupConfig, intervalMinutes: parseInt(e.target.value) })}
-                            className="bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5"
-                          >
-                            <option value={5}>Every 5 minutes</option>
-                            <option value={15}>Every 15 minutes</option>
-                            <option value={30}>Every 30 minutes</option>
-                            <option value={60}>Every 1 hour</option>
-                          </select>
+                        <div className="flex flex-col gap-3 mt-4 border-t border-[var(--border-color)] pt-4">
+                          <h4 className="text-sm font-medium text-[var(--text-primary)] mb-2">Backup Intervals</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {[
+                              { key: 'tasks', label: 'Tasks' },
+                              { key: 'jadwal', label: 'Jadwal' },
+                              { key: 'klaim', label: 'Klaim' },
+                              { key: 'links', label: 'Links' },
+                            ].map(({ key, label }) => (
+                              <div key={key} className="flex items-center justify-between gap-3">
+                                <label className="text-sm text-[var(--text-secondary)]">{label}:</label>
+                                <select 
+                                  value={backupConfig.intervals?.[key as keyof typeof backupConfig.intervals] || backupConfig.intervalMinutes || 15}
+                                  onChange={(e) => updateBackupConfig({ 
+                                    ...backupConfig, 
+                                    intervals: { 
+                                      ...(backupConfig.intervals || { tasks: 15, jadwal: 15, klaim: 15, links: 15 }),
+                                      [key]: parseInt(e.target.value) 
+                                    } 
+                                  })}
+                                  className="bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5"
+                                >
+                                  <option value={5}>Every 5 minutes</option>
+                                  <option value={15}>Every 15 minutes</option>
+                                  <option value={30}>Every 30 minutes</option>
+                                  <option value={60}>Every 1 hour</option>
+                                </select>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -1088,8 +1088,9 @@ export default function App() {
     inApp: localStorage.getItem('notify_in_app') !== 'false' // default true
   });
 
-  const [backupConfig, setBackupConfig] = useState<{enabled: boolean, intervalMinutes: number}>({ 
+  const [backupConfig, setBackupConfig] = useState<BackupConfig>({ 
     enabled: false, 
+    intervals: { tasks: 15, jadwal: 15, klaim: 15, links: 15 },
     intervalMinutes: 15 
   });
 
@@ -1529,7 +1530,7 @@ export default function App() {
     fetchWarehouseData();
   }, [currentUser]);
 
-  const updateBackupConfig = async (config: { enabled: boolean; intervalMinutes: number }) => {
+  const updateBackupConfig = async (config: BackupConfig) => {
     try {
       await setDoc(doc(db, 'metadata', 'settings'), { backup: config }, { merge: true });
       setBackupConfig(config);
@@ -1567,9 +1568,9 @@ export default function App() {
     return tmp.textContent || tmp.innerText || '';
   };
 
-  const performBackupToSheets = async () => {
+  const performBackupToSheets = async (target: 'all' | 'tasks' | 'links' | 'jadwal' | 'klaim' = 'all') => {
     try {
-      console.log('Running automatic backup...');
+      console.log(`Running automatic backup for ${target}...`);
       
       // helper function to send all items
       const sendAll = async (items: any[], action: string, sheetNameKey: string, sheetNameVal: string | undefined, listKey: string) => {
@@ -1604,77 +1605,81 @@ export default function App() {
         console.log(`Finished backup for ${action}`);
       };
 
-      const minimalTasks = tasksRef.current.map(item => ({
-        id: item.id,
-        display_id: item.display_id,
-        title: item.title,
-        description: stripHtml(item.description).slice(0, 100),
-        status: item.status,
-        assignee: item.assignee,
-        requestor: item.requestor,
-        division: item.division,
-        brand: item.brand,
-        category: item.category,
-        due_date: item.due_date,
-        updated_at: item.updated_at,
-        created_at: item.created_at,
-        priority: item.priority,
-        request_date: item.request_date,
-        authorName: item.authorName
-      }));
-
-      await sendAll(minimalTasks, 'backupToSheets', '', undefined, 'tasks');
+      if (target === 'all' || target === 'tasks') {
+        const minimalTasks = tasksRef.current.map(item => ({
+          id: item.id,
+          display_id: item.display_id,
+          title: item.title,
+          description: stripHtml(item.description).slice(0, 100),
+          status: item.status,
+          assignee: item.assignee,
+          requestor: item.requestor,
+          division: item.division,
+          brand: item.brand,
+          category: item.category,
+          due_date: item.due_date,
+          updated_at: item.updated_at,
+          created_at: item.created_at,
+          priority: item.priority,
+          request_date: item.request_date,
+          authorName: item.authorName
+        }));
+        await sendAll(minimalTasks, 'backupToSheets', '', undefined, 'tasks');
+      }
       
-      const minimalLinks = dataLinksRef.current.map((item: any) => ({
-        id: item.id,
-        display_id: item.display_id,
-        category: item.category,
-        link_name: item.link_name,
-        link_url: item.link_url,
-        description: item.description,
-        note: item.note
-      }));
+      if (target === 'all' || target === 'links') {
+        const minimalLinks = dataLinksRef.current.map((item: any) => ({
+          id: item.id,
+          display_id: item.display_id,
+          category: item.category,
+          link_name: item.link_name,
+          link_url: item.link_url,
+          description: item.description,
+          note: item.note
+        }));
+        await sendAll(minimalLinks, 'backupDataListLinksToSheets', 'sheetName', 'LINK', 'links');
+      }
 
-      await sendAll(minimalLinks, 'backupDataListLinksToSheets', 'sheetName', 'LINK', 'links');
+      if (target === 'all' || target === 'jadwal') {
+        const minimalJadwal = dataJadwalRef.current.map(item => ({
+          id: item.id,
+          display_id: item.display_id,
+          date: item.date,
+          type: item.type,
+          category: item.category,
+          wh_code: item.wh_code,
+          wh_name: item.wh_name,
+          wh_partner: item.wh_partner,
+          remark: stripHtml(item.remark).slice(0, 100),
+          subject_email: item.subject_email,
+          status_btb_wh: item.status_btb_wh,
+          subject_email_btb_brand: item.subject_email_btb_brand,
+          status_btb_brand: item.status_btb_brand
+        }));
+        await sendAll(minimalJadwal, 'backupDataListJadwalToSheets', 'sheetName', 'JADWAL', 'jadwal');
+      }
 
-      const minimalJadwal = dataJadwalRef.current.map(item => ({
-        id: item.id,
-        display_id: item.display_id,
-        date: item.date,
-        type: item.type,
-        category: item.category,
-        wh_code: item.wh_code,
-        wh_name: item.wh_name,
-        wh_partner: item.wh_partner,
-        remark: stripHtml(item.remark).slice(0, 100),
-        subject_email: item.subject_email,
-        status_btb_wh: item.status_btb_wh,
-        subject_email_btb_brand: item.subject_email_btb_brand,
-        status_btb_brand: item.status_btb_brand
-      }));
-
-      await sendAll(minimalJadwal, 'backupDataListJadwalToSheets', 'sheetName', 'JADWAL', 'jadwal');
-
-      const minimalKlaim = dataKlaimRef.current.map(item => ({
-        id: item.id,
-        display_id: item.display_id,
-        claim_type: item.claim_type,
-        invoice_date: item.invoice_date,
-        invoice_no: item.invoice_no,
-        description: stripHtml(item.description).slice(0, 100),
-        subject_email: item.subject_email,
-        link_data: item.link_data,
-        whp_name: item.whp_name,
-        partner: item.partner,
-        claim_value: item.claim_value,
-        tax: item.tax,
-        due: item.due,
-        subsidiary: item.subsidiary,
-        status: item.status,
-        remark: stripHtml(item.remark).slice(0, 100)
-      }));
-
-      await sendAll(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
+      if (target === 'all' || target === 'klaim') {
+        const minimalKlaim = dataKlaimRef.current.map(item => ({
+          id: item.id,
+          display_id: item.display_id,
+          claim_type: item.claim_type,
+          invoice_date: item.invoice_date,
+          invoice_no: item.invoice_no,
+          description: stripHtml(item.description).slice(0, 100),
+          subject_email: item.subject_email,
+          link_data: item.link_data,
+          whp_name: item.whp_name,
+          partner: item.partner,
+          claim_value: item.claim_value,
+          tax: item.tax,
+          due: item.due,
+          subsidiary: item.subsidiary,
+          status: item.status,
+          remark: stripHtml(item.remark).slice(0, 100)
+        }));
+        await sendAll(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
+      }
     } catch (err) {
       console.error('Auto backup failed', err);
       throw err;
@@ -1689,18 +1694,36 @@ export default function App() {
   useEffect(() => {
     if (!backupConfig.enabled || currentUserRole !== 'admin') return;
 
-    const intervalMs = backupConfig.intervalMinutes * 60 * 1000;
+    const getInterval = (type: 'tasks' | 'jadwal' | 'klaim' | 'links') => {
+      if (backupConfig.intervals && backupConfig.intervals[type]) {
+        return backupConfig.intervals[type] * 60 * 1000;
+      }
+      return (backupConfig.intervalMinutes || 15) * 60 * 1000;
+    };
 
-    const intervalId = setInterval(async () => {
-       try {
-         await performBackupToSheetsRef.current();
-       } catch (e) {
-         // Error already logged
-       }
-    }, intervalMs);
+    const taskIntervalId = setInterval(async () => {
+      try { await performBackupToSheetsRef.current('tasks'); } catch (e) {}
+    }, getInterval('tasks'));
 
-    return () => clearInterval(intervalId);
-  }, [backupConfig.enabled, backupConfig.intervalMinutes, currentUserRole]);
+    const linksIntervalId = setInterval(async () => {
+      try { await performBackupToSheetsRef.current('links'); } catch (e) {}
+    }, getInterval('links'));
+
+    const jadwalIntervalId = setInterval(async () => {
+      try { await performBackupToSheetsRef.current('jadwal'); } catch (e) {}
+    }, getInterval('jadwal'));
+
+    const klaimIntervalId = setInterval(async () => {
+      try { await performBackupToSheetsRef.current('klaim'); } catch (e) {}
+    }, getInterval('klaim'));
+
+    return () => {
+      clearInterval(taskIntervalId);
+      clearInterval(linksIntervalId);
+      clearInterval(jadwalIntervalId);
+      clearInterval(klaimIntervalId);
+    };
+  }, [backupConfig, currentUserRole]);
 
   useEffect(() => {
     // Subscribe to notifications

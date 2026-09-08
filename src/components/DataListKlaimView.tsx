@@ -1075,7 +1075,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--border-color)]">
+              <tbody className="divide-y divide-[var(--border-color)] text-sm">
                 {currentData.map((item, idx) => {
                   return (
                     <tr 

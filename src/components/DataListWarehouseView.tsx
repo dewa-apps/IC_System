@@ -504,7 +504,7 @@ const DataListWarehouseView = forwardRef<DataListWarehouseViewRef, DataListWareh
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--border-color)]">
+              <tbody className="divide-y divide-[var(--border-color)] text-sm">
                 {paginatedData.map((item, idx) => (
                   <tr 
                     key={idx} 

@@ -413,7 +413,7 @@ const DataListLinkView = forwardRef<DataListLinkViewRef, DataListLinkViewProps>(
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border-color)]">
+            <tbody className="divide-y divide-[var(--border-color)] text-sm">
               {paginatedLinks.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-[var(--text-secondary)]">

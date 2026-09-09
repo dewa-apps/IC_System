@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch, formatDoc } from './apiInterceptor';
 import { auth, db } from './firebase';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, setDoc, writeBatch } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { 
   Layout, 
@@ -1746,6 +1746,47 @@ export default function App() {
     }
   }, [myNameInDb]);
 
+
+  // Check for upcoming jadwal (H-1) and notify all users
+  useEffect(() => {
+    if (currentUserRole !== 'admin' || dataJadwal.length === 0 || users.length === 0) return;
+    
+    const checkUpcomingJadwal = async () => {
+      const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
+      const tomorrowStr = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+      
+      const toNotify = dataJadwal.filter(j => j.date === tomorrowStr && !j.notified_h1);
+      if (toNotify.length === 0) return;
+
+      for (const j of toNotify) {
+        const batch = writeBatch(db);
+        
+        users.forEach(user => {
+          const notifRef = doc(collection(db, 'notifications'));
+          batch.set(notifRef, {
+            recipient: user.name,
+            title: 'Jadwal H-1 Reminder',
+            message: `Jadwal ${j.display_id || ''} (${j.type} - ${j.wh_name}) is scheduled for tomorrow (${tomorrowStr}).`,
+            type: 'system',
+            link: '',
+            created_at: new Date().toISOString(),
+            read: false
+          });
+        });
+        
+        batch.update(doc(db, 'data_list_jadwal', j.id), { notified_h1: true });
+        
+        try {
+          await batch.commit();
+        } catch (e) {
+          console.error("Failed to send upcoming jadwal notifications", e);
+        }
+      }
+    };
+    
+    checkUpcomingJadwal();
+  }, [dataJadwal, currentUserRole, users]);
+
   const markNotificationAsRead = async (id: string) => {
     try {
       await updateDoc(doc(db, 'notifications', id), { read: true });
@@ -1757,9 +1798,13 @@ export default function App() {
   const markAllNotificationsAsRead = async () => {
     try {
       const unreadNotifs = notifications.filter(n => !n.read);
-      for (const notif of unreadNotifs) {
-        await updateDoc(doc(db, 'notifications', notif.id), { read: true });
-      }
+      if (unreadNotifs.length === 0) return;
+      
+      const batch = writeBatch(db);
+      unreadNotifs.forEach(notif => {
+        batch.update(doc(db, 'notifications', notif.id), { read: true });
+      });
+      await batch.commit();
     } catch (e) {
       console.error("Failed to mark all notifications as read", e);
     }
@@ -3823,6 +3868,7 @@ export default function App() {
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Requestor</label>
                     <input 
+                      required
                       type="text"
                       list="requestors"
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
@@ -3837,6 +3883,7 @@ export default function App() {
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Division</label>
                     <input 
+                      required
                       type="text"
                       list="divisions"
                       className="w-full px-3 py-2 border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"

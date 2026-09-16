@@ -1339,6 +1339,7 @@ export default function App() {
   const dataListLinkRef = React.useRef<DataListLinkViewRef>(null);
   const dataListJadwalRef = React.useRef<DataListJadwalViewRef>(null);
   const dataListKlaimRef = React.useRef<DataListKlaimViewRef>(null);
+  const processedJadwalRef = React.useRef<Set<string>>(new Set());
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1755,10 +1756,11 @@ export default function App() {
       const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
       const tomorrowStr = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
       
-      const toNotify = dataJadwal.filter(j => j.date === tomorrowStr && !j.notified_h1);
+      const toNotify = dataJadwal.filter(j => j.date === tomorrowStr && !j.notified_h1 && !processedJadwalRef.current.has(j.id));
       if (toNotify.length === 0) return;
 
       for (const j of toNotify) {
+        processedJadwalRef.current.add(j.id);
         const batch = writeBatch(db);
         
         users.forEach(user => {
@@ -1769,6 +1771,7 @@ export default function App() {
             message: `Jadwal ${j.display_id || ''} (${j.type} - ${j.wh_name}) is scheduled for tomorrow (${tomorrowStr}).`,
             type: 'system',
             link: '',
+            jadwal_id: j.id,
             created_at: new Date().toISOString(),
             read: false
           });
@@ -2985,6 +2988,14 @@ export default function App() {
                                   if (targetTask) {
                                     setCurrentView('tasks');
                                     openModal(targetTask);
+                                  }
+                                } else if (notif.jadwal_id) {
+                                  const targetJadwal = dataJadwal.find(j => j.id === notif.jadwal_id);
+                                  if (targetJadwal) {
+                                    setCurrentView('data-list-jadwal');
+                                    setTimeout(() => {
+                                      dataListJadwalRef.current?.openEditModal(targetJadwal);
+                                    }, 100);
                                   }
                                 }
                               }}

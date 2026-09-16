@@ -25,6 +25,7 @@ import toast from 'react-hot-toast';
 
 export interface DataListJadwalViewRef {
   openAddModal: (defaultDate?: string) => void;
+  openEditModal: (jadwal: DataListJadwal) => void;
 }
 
 interface DataListJadwalViewProps {
@@ -342,7 +343,8 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
   };
 
   useImperativeHandle(ref, () => ({
-    openAddModal
+    openAddModal,
+    openEditModal
   }));
 
   const openEditModal = (jadwal: DataListJadwal) => {

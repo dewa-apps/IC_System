@@ -1772,7 +1772,7 @@ export default function App() {
             type: 'system',
             link: '',
             jadwal_id: j.id,
-            created_at: new Date().toISOString(),
+            created_at: new Date(),
             read: false
           });
         });

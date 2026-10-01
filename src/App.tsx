@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch, formatDoc } from './apiInterceptor';
 import { auth, db } from './firebase';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, setDoc, writeBatch, getDoc, serverTimestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { 
   Layout, 
@@ -69,7 +69,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal, DataListKlaim } from './types';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment, SubTask, Template, ActivityLog, TaskLink, LinkType, User as AppUser, DataListLink, DataListJadwal, DataListKlaim, BackupConfig } from './types';
 import DataListLinkView, { DataListLinkViewRef } from './components/DataListLinkView';
 import DataListJadwalView, { DataListJadwalViewRef } from './components/DataListJadwalView';
 import DataListKlaimView, { DataListKlaimViewRef } from './components/DataListKlaimView';
@@ -1726,20 +1726,89 @@ export default function App() {
     };
   }, [backupConfig, currentUserRole]);
 
+  // Helper to parse any timestamp representation (Timestamp, Date, string, millis) to epoch milliseconds
+  const parseNotificationTime = (val: any): number => {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (val instanceof Date) return val.getTime();
+    if (typeof val?.toMillis === 'function') return val.toMillis();
+    if (typeof val?.toDate === 'function') return val.toDate().getTime();
+    if (typeof val?.seconds === 'number') {
+      return val.seconds * 1000 + (val.nanoseconds ? Math.floor(val.nanoseconds / 1000000) : 0);
+    }
+    if (typeof val === 'string') {
+      const parsed = Date.parse(val);
+      if (!isNaN(parsed)) return parsed;
+      const normalized = val.includes(' ') ? val.replace(' ', 'T') + 'Z' : val;
+      const p2 = Date.parse(normalized);
+      if (!isNaN(p2)) return p2;
+    }
+    return 0;
+  };
+
   useEffect(() => {
-    // Subscribe to notifications
+    // Subscribe to notifications for the logged in recipient
     if (myNameInDb) {
       const q = query(
         collection(db, 'notifications'), 
-        where('recipient', '==', myNameInDb),
-        orderBy('created_at', 'desc')
+        where('recipient', '==', myNameInDb)
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const notifs = snapshot.docs.map(doc => ({
+        const rawNotifs = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        setNotifications(notifs);
+
+        // Strict client-side sorting by real epoch milliseconds descending (newest first)
+        // This ensures old notifications with string dates don't get pinned at the top!
+        rawNotifs.sort((a: any, b: any) => parseNotificationTime(b.created_at) - parseNotificationTime(a.created_at));
+
+        // Deduplicate notifications so the user never sees duplicates
+        const seenKeys = new Set<string>();
+        const uniqueNotifs: any[] = [];
+        const duplicateIdsToDelete: string[] = [];
+
+        for (const notif of rawNotifs as any[]) {
+          let dedupKey = '';
+          if (notif.jadwal_id) {
+            dedupKey = `jadwal_${notif.jadwal_id}_${notif.recipient}`;
+          } else if (notif.task_display_id) {
+            dedupKey = `task_${notif.task_display_id}_${notif.type}_${notif.recipient}`;
+          } else {
+            dedupKey = `${notif.recipient}_${notif.title}_${notif.message}`;
+          }
+
+          if (seenKeys.has(dedupKey)) {
+            duplicateIdsToDelete.push(notif.id);
+          } else {
+            seenKeys.add(dedupKey);
+            uniqueNotifs.push(notif);
+          }
+        }
+
+        setNotifications(uniqueNotifs);
+
+        // Auto clean-up duplicate documents from Firestore in background
+        if (duplicateIdsToDelete.length > 0) {
+          const batch = writeBatch(db);
+          duplicateIdsToDelete.slice(0, 100).forEach(docId => {
+            batch.delete(doc(db, 'notifications', docId));
+          });
+          batch.commit().catch(e => console.warn("Failed to clean up duplicate notifications from database:", e));
+        }
+
+        // Auto migrate legacy notifications with string created_at to real Firestore Timestamps
+        const legacyStringDocs = (rawNotifs as any[]).filter(n => typeof n.created_at === 'string');
+        if (legacyStringDocs.length > 0) {
+          const batch = writeBatch(db);
+          legacyStringDocs.slice(0, 100).forEach(n => {
+            const timeMs = parseNotificationTime(n.created_at);
+            batch.update(doc(db, 'notifications', n.id), {
+              created_at: new Date(timeMs || Date.now())
+            });
+          });
+          batch.commit().catch(e => console.warn("Failed to migrate legacy notification timestamps:", e));
+        }
       }, (error) => {
         console.error("Error fetching notifications:", error);
       });
@@ -1753,28 +1822,50 @@ export default function App() {
     if (currentUserRole !== 'admin' || dataJadwal.length === 0 || users.length === 0) return;
     
     const checkUpcomingJadwal = async () => {
+      // Calculate tomorrow's date in Asia/Jakarta timezone (WIB)
       const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
-      const tomorrowStr = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+      const tomorrowStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(tomorrow);
       
       const toNotify = dataJadwal.filter(j => j.date === tomorrowStr && !j.notified_h1 && !processedJadwalRef.current.has(j.id));
       if (toNotify.length === 0) return;
 
+      // Mark locally immediately to prevent re-entrancy in same session
+      toNotify.forEach(j => processedJadwalRef.current.add(j.id));
+
+      // Get unique recipient names to prevent duplicate notifications for users
+      const uniqueRecipients = Array.from(
+        new Set(
+          users
+            .map(u => (u.name || '').trim())
+            .filter(name => name.length > 0)
+        )
+      );
+
       for (const j of toNotify) {
-        processedJadwalRef.current.add(j.id);
         const batch = writeBatch(db);
         
-        users.forEach(user => {
-          const notifRef = doc(collection(db, 'notifications'));
+        uniqueRecipients.forEach(recipientName => {
+          // Deterministic document ID prevents duplicate notifications in Firestore
+          const safeRecipient = recipientName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const notifId = `jadwal_h1_${j.id}_${safeRecipient}`;
+          const notifRef = doc(db, 'notifications', notifId);
+          
           batch.set(notifRef, {
-            recipient: user.name,
+            recipient: recipientName,
             title: 'Jadwal H-1 Reminder',
             message: `Jadwal ${j.display_id || ''} (${j.type} - ${j.wh_name}) is scheduled for tomorrow (${tomorrowStr}).`,
             type: 'system',
             link: '',
             jadwal_id: j.id,
-            created_at: new Date(),
+            jadwal_display_id: j.display_id || '',
+            created_at: serverTimestamp(),
             read: false
-          });
+          }, { merge: true });
         });
         
         batch.update(doc(db, 'data_list_jadwal', j.id), { notified_h1: true });
@@ -1830,24 +1921,16 @@ export default function App() {
 
   const formatTimeAgo = (dateStr: string | any) => {
     if (!dateStr) return '';
-    let d: Date;
-    if (typeof dateStr === 'string') {
-      const normalized = dateStr.includes(' ') ? dateStr.replace(' ', 'T') + 'Z' : 
-                        (dateStr.includes('T') && !dateStr.endsWith('Z') ? dateStr + 'Z' : dateStr);
-      d = new Date(normalized);
-    } else if (dateStr?.toDate) {
-      d = dateStr.toDate();
-    } else {
-      return '';
-    }
+    const timeMs = parseNotificationTime(dateStr);
+    if (!timeMs) return '';
     
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
+    const now = Date.now();
+    const diffMs = now - timeMs;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMs < 0 || diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${diffDays}d ago`;
@@ -2980,7 +3063,7 @@ export default function App() {
                             <div 
                               key={notif.id} 
                               className={`p-4 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer ${!notif.read ? 'bg-[var(--bg-secondary)] bg-opacity-30' : ''}`}
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!notif.read) markNotificationAsRead(notif.id);
                                 setShowNotifications(false);
                                 if (notif.task_display_id) {
@@ -2990,12 +3073,33 @@ export default function App() {
                                     openModal(targetTask);
                                   }
                                 } else if (notif.jadwal_id) {
-                                  const targetJadwal = dataJadwal.find(j => j.id === notif.jadwal_id);
+                                  let targetJadwal = dataJadwal.find(j => String(j.id) === String(notif.jadwal_id) || (notif.jadwal_display_id && j.display_id === notif.jadwal_display_id));
+                                  if (!targetJadwal) {
+                                    try {
+                                      const jDoc = await getDoc(doc(db, 'data_list_jadwal', String(notif.jadwal_id)));
+                                      if (jDoc.exists()) {
+                                        targetJadwal = { id: jDoc.id, ...jDoc.data() } as DataListJadwal;
+                                      }
+                                    } catch (err) {
+                                      console.error("Failed to fetch jadwal by id", err);
+                                    }
+                                  }
                                   if (targetJadwal) {
                                     setCurrentView('data-list-jadwal');
-                                    setTimeout(() => {
-                                      dataListJadwalRef.current?.openEditModal(targetJadwal);
-                                    }, 100);
+                                    if (dataListJadwalRef.current) {
+                                      dataListJadwalRef.current.openEditModal(targetJadwal);
+                                    } else {
+                                      let attempts = 0;
+                                      const interval = setInterval(() => {
+                                        attempts++;
+                                        if (dataListJadwalRef.current) {
+                                          dataListJadwalRef.current.openEditModal(targetJadwal!);
+                                          clearInterval(interval);
+                                        } else if (attempts >= 25) {
+                                          clearInterval(interval);
+                                        }
+                                      }, 60);
+                                    }
                                   }
                                 }
                               }}

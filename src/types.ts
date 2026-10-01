@@ -102,6 +102,7 @@ export interface DataListJadwal {
   status_btb_wh: 'None' | 'Open' | 'In Progress' | 'Done';
   subject_email_btb_brand: string;
   status_btb_brand: 'None' | 'Open' | 'In Progress' | 'Done';
+  notified_h1?: boolean;
   created_at?: any;
   updated_at?: any;
 }

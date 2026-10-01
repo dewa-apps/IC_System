@@ -401,12 +401,15 @@ const DataListJadwalView = forwardRef<DataListJadwalViewRef, DataListJadwalViewP
     try {
       const dbRef = collection(db, 'data_list_jadwal');
       
-      const saveData = {
+      const saveData: any = {
         ...formData,
         updated_at: serverTimestamp(),
       };
 
       if (currentEditingJadwal) {
+        if (currentEditingJadwal.date !== formData.date) {
+          saveData.notified_h1 = false;
+        }
         await updateDoc(doc(db, 'data_list_jadwal', currentEditingJadwal.id), saveData);
         await logActivity(currentEditingJadwal.id, "Updated Jadwal", `Updated Jadwal ${currentEditingJadwal.display_id || formData.wh_name}`);
         toast.success('Jadwal updated successfully');

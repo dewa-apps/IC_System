@@ -1134,6 +1134,7 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit) => 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          action: 'uploadFile',
           base64: base64Data,
           fileName: file.name,
           mimeType: file.type

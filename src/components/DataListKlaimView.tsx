@@ -138,6 +138,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     status: 140,
     success_claim: 130,
     percent_success: 100,
+    remark: 180,
     note: 180
   });
   const [resizingCol, setResizingCol] = useState<{ key: string, startX: number, startWidth: number } | null>(null);
@@ -161,6 +162,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         (item.description || '').toLowerCase().includes(ms) ||
         (item.whp_name || '').toLowerCase().includes(ms) ||
         (item.subject_email || '').toLowerCase().includes(ms) ||
+        (item.remark || '').toLowerCase().includes(ms) ||
         (item.note || '').toLowerCase().includes(ms)
       );
     }
@@ -673,6 +675,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     const statusAmounts: Record<string, number> = {};
     const partnerCounts: Record<string, number> = {};
     const partnerAmounts: Record<string, number> = {};
+    const partnerSuccessAmounts: Record<string, number> = {};
     const typeCounts: Record<string, number> = {};
     const typeAmounts: Record<string, number> = {};
 
@@ -693,9 +696,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       statusAmounts[st] += (item.due || 0);
 
       const p = item.partner || 'Unknown';
-      if (!partnerCounts[p]) { partnerCounts[p] = 0; partnerAmounts[p] = 0; }
+      if (!partnerCounts[p]) { partnerCounts[p] = 0; partnerAmounts[p] = 0; partnerSuccessAmounts[p] = 0; }
       partnerCounts[p]++;
       partnerAmounts[p] += (item.due || 0);
+      partnerSuccessAmounts[p] += (item.success_claim || 0);
 
       const t = item.claim_type || 'Unknown';
       if (!typeCounts[t]) { typeCounts[t] = 0; typeAmounts[t] = 0; }
@@ -703,7 +707,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       typeAmounts[t] += (item.due || 0);
     });
 
-    return { totalDue, totalTax, totalClaim, totalSuccessClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, typeCounts, typeAmounts };
+    return { totalDue, totalTax, totalClaim, totalSuccessClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, partnerSuccessAmounts, typeCounts, typeAmounts };
   }, [filteredData]);
 
   const handleExportCSV = () => {
@@ -1040,19 +1044,42 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
 
               {/* Claims by Partner */}
               <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
-                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-3 mb-4">Summary by Partner</h3>
+                <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 mb-4">
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">Summary by Partner</h3>
+                  <span className="text-xs text-[var(--text-muted)] font-medium">Due & Success</span>
+                </div>
                 <div className="space-y-3">
-                  {Object.entries(summaryStats.partnerCounts).map(([partner, count]) => (
-                    <div key={partner} className="flex items-center justify-between hover:bg-[var(--bg-secondary)] p-2 rounded -mx-2 transition-colors">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-[var(--text-primary)]">{partner}</span>
-                        <span className="text-xs text-[var(--text-muted)]">{count} items</span>
+                  {Object.entries(summaryStats.partnerCounts).map(([partner, count]) => {
+                    const dueAmt = summaryStats.partnerAmounts[partner] || 0;
+                    const successAmt = summaryStats.partnerSuccessAmounts[partner] || 0;
+                    const pct = dueAmt > 0 ? ((successAmt / dueAmt) * 100).toFixed(1) : '0.0';
+
+                    return (
+                      <div key={partner} className="flex items-center justify-between hover:bg-[var(--bg-secondary)] p-2 rounded -mx-2 transition-colors">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-[var(--text-primary)]">{partner}</span>
+                          <span className="text-xs text-[var(--text-muted)]">{count} {count === 1 ? 'item' : 'items'}</span>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                          <div className="text-sm font-bold text-[var(--text-primary)]">
+                            {formatCurrency(dueAmt)}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-[var(--text-muted)] font-mono">{formatCurrency(successAmt)}</span>
+                            <span className={`px-1.5 py-0.2 rounded text-[11px] font-bold font-mono ${
+                              Number(pct) >= 80 
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' 
+                                : Number(pct) > 0 
+                                  ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' 
+                                  : 'bg-zinc-500/10 text-[var(--text-muted)]'
+                            }`}>
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm font-bold text-[var(--text-primary)]">
-                        {formatCurrency(summaryStats.partnerAmounts[partner])}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1076,7 +1103,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     { key: 'due', label: 'Due' },
                     { key: 'success_claim', label: 'Success Claim' },
                     { key: 'percent_success', label: '% Success' },
-                    { key: 'note', label: 'Note' }
+                    { key: 'remark', label: 'Remark' }
                   ].map((col) => (
                     <th 
                       key={col.key} 
@@ -1165,8 +1192,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                           ? `${Number(item.percent_success).toFixed(1)}%` 
                           : (item.due && item.due > 0 && item.success_claim ? `${((item.success_claim / item.due) * 100).toFixed(1)}%` : '0%')}
                       </td>
-                      <td className="px-4 py-2 truncate text-[var(--text-secondary)] text-xs" style={{ maxWidth: colWidths.note }} title={item.note || ''}>
-                        {item.note || '-'}
+                      <td className="px-4 py-2 truncate text-[var(--text-secondary)] text-xs" style={{ maxWidth: colWidths.remark }} title={item.remark || ''}>
+                        {item.remark || '-'}
                       </td>
                     </tr>
                   )

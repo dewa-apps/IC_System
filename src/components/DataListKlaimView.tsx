@@ -135,7 +135,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     description: 250,
     claim_value: 120,
     due: 120,
-    status: 140
+    status: 140,
+    success_claim: 130,
+    percent_success: 100,
+    note: 180
   });
   const [resizingCol, setResizingCol] = useState<{ key: string, startX: number, startWidth: number } | null>(null);
   const isResizingRef = React.useRef(false);
@@ -157,7 +160,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         (item.invoice_no || '').toLowerCase().includes(ms) ||
         (item.description || '').toLowerCase().includes(ms) ||
         (item.whp_name || '').toLowerCase().includes(ms) ||
-        (item.subject_email || '').toLowerCase().includes(ms)
+        (item.subject_email || '').toLowerCase().includes(ms) ||
+        (item.note || '').toLowerCase().includes(ms)
       );
     }
 
@@ -310,7 +314,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     tax: 0,
     subsidiary: '',
     status: 'Open',
-    remark: ''
+    remark: '',
+    success_claim: 0,
+    note: ''
   });
 
   const fetchAttachments = async (id: string) => {
@@ -428,7 +434,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         tax: 0,
         subsidiary: '',
         status: 'Open',
-        remark: ''
+        remark: '',
+        success_claim: 0,
+        note: ''
       });
       setIsModalOpen(true);
     }
@@ -449,7 +457,9 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       tax: item.tax || 0,
       subsidiary: item.subsidiary || '',
       status: item.status || 'Open',
-      remark: item.remark || ''
+      remark: item.remark || '',
+      success_claim: item.success_claim !== undefined ? item.success_claim : 0,
+      note: item.note || ''
     });
     setAttachments([]);
     setActivities([]);
@@ -470,7 +480,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     }));
   };
 
-  const handleClaimValueTaxChange = (field: 'claim_value' | 'tax', valStr: string) => {
+  const handleClaimValueTaxChange = (field: 'claim_value' | 'tax' | 'success_claim', valStr: string) => {
     const val = parseFloat(valStr) || 0;
     setFormData(prev => {
       const newVal = { ...prev, [field]: val };
@@ -478,7 +488,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     });
   };
 
-  const handleNumberPaste = (e: React.ClipboardEvent<HTMLInputElement>, field: 'claim_value' | 'tax') => {
+  const handleNumberPaste = (e: React.ClipboardEvent<HTMLInputElement>, field: 'claim_value' | 'tax' | 'success_claim') => {
     const pasted = e.clipboardData.getData('text');
     if (!pasted) return;
     
@@ -532,10 +542,12 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     
     try {
       const calculatedDue = (formData.claim_value || 0) + (formData.tax || 0);
+      const calculatedPercentSuccess = calculatedDue > 0 ? Math.round(((formData.success_claim || 0) / calculatedDue * 100) * 100) / 100 : 0;
 
       const finalData = {
         ...formData,
         due: calculatedDue,
+        percent_success: calculatedPercentSuccess,
         updated_at: serverTimestamp()
       };
 
@@ -548,6 +560,8 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         if (editingItem.invoice_date !== formData.invoice_date) changes.push(`Invoice Date: ${editingItem.invoice_date} -> ${formData.invoice_date}`);
         if (editingItem.claim_value !== formData.claim_value) changes.push(`Claim Value: ${editingItem.claim_value} -> ${formData.claim_value}`);
         if (editingItem.tax !== formData.tax) changes.push(`Tax: ${editingItem.tax} -> ${formData.tax}`);
+        if (editingItem.success_claim !== formData.success_claim) changes.push(`Success Claim: ${editingItem.success_claim} -> ${formData.success_claim}`);
+        if (editingItem.note !== formData.note) changes.push(`Note: ${editingItem.note} -> ${formData.note}`);
         if (editingItem.status !== formData.status) changes.push(`Status: ${editingItem.status} -> ${formData.status}`);
 
         const detailsStr = changes.length > 0 ? changes.join('\n') : "Klaim details updated";
@@ -652,6 +666,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     let totalDue = 0;
     let totalTax = 0;
     let totalClaim = 0;
+    let totalSuccessClaim = 0;
     let outstandingCount = 0;
     let outstandingAmount = 0;
     const statusCounts: Record<string, number> = {};
@@ -665,6 +680,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       totalClaim += (item.claim_value || 0);
       totalTax += (item.tax || 0);
       totalDue += (item.due || 0);
+      totalSuccessClaim += (item.success_claim || 0);
 
       if (!item.invoice_date) {
         outstandingCount++;
@@ -687,11 +703,11 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
       typeAmounts[t] += (item.due || 0);
     });
 
-    return { totalDue, totalTax, totalClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, typeCounts, typeAmounts };
+    return { totalDue, totalTax, totalClaim, totalSuccessClaim, outstandingCount, outstandingAmount, statusCounts, statusAmounts, partnerCounts, partnerAmounts, typeCounts, typeAmounts };
   }, [filteredData]);
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Status', 'Subject Email', 'Subsidiary', 'Claim Type', 'WHP Name', 'Invoice Date', 'Invoice No', 'Partner', 'Claim Value', 'Tax', 'Due', 'Remark', 'Created At'];
+    const headers = ['ID', 'Status', 'Subject Email', 'Subsidiary', 'Claim Type', 'WHP Name', 'Invoice Date', 'Invoice No', 'Partner', 'Claim Value', 'Tax', 'Due', 'Success Claim', '% Success', 'Remark', 'Note', 'Created At'];
     
     const stripHtml = (html: string) => {
       if (!html) return '';
@@ -700,6 +716,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
     };
 
     const rows = filteredData.map(item => {
+      const percentStr = item.percent_success !== undefined && item.percent_success !== null 
+        ? `${item.percent_success}%` 
+        : (item.due && item.due > 0 && item.success_claim ? `${((item.success_claim / item.due) * 100).toFixed(2)}%` : '0%');
+
       // Create local formatted values, replace undefined with '' and quotes with double quotes
       return [
         item.display_id || `KL-${item.id}`,
@@ -714,7 +734,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
         item.claim_value || 0,
         item.tax || 0,
         item.due || 0,
+        item.success_claim || 0,
+        `"${percentStr}"`,
         `"${stripHtml(item.remark || '').replace(/"/g, '""')}"`,
+        `"${stripHtml(item.note || '').replace(/"/g, '""')}"`,
         formatDateSafely(item.created_at)
       ].join(',');
     });
@@ -951,7 +974,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
           </div>
         ) : viewMode === 'summary' ? (
           <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6 bg-[var(--bg-secondary)]">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
                 <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Outstanding (No Inv Date)</div>
                 <div className="text-2xl font-black text-amber-500">{formatCurrency(summaryStats.outstandingAmount)}</div>
@@ -968,6 +991,13 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
               <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
                 <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Claim Value</div>
                 <div className="text-2xl font-black text-[var(--text-primary)]">{formatCurrency(summaryStats.totalClaim)}</div>
+              </div>
+              <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Total Success Claim</div>
+                <div className="text-2xl font-black text-emerald-500">{formatCurrency(summaryStats.totalSuccessClaim)}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">
+                  {summaryStats.totalDue > 0 ? `${((summaryStats.totalSuccessClaim / summaryStats.totalDue) * 100).toFixed(1)}% of Due` : '0%'}
+                </div>
               </div>
             </div>
 
@@ -1043,7 +1073,10 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                     { key: 'invoice_date', label: 'Invoice Date' },
                     { key: 'invoice_no', label: 'Invoice No' },
                     { key: 'claim_value', label: 'Claim Value' },
-                    { key: 'due', label: 'Due' }
+                    { key: 'due', label: 'Due' },
+                    { key: 'success_claim', label: 'Success Claim' },
+                    { key: 'percent_success', label: '% Success' },
+                    { key: 'note', label: 'Note' }
                   ].map((col) => (
                     <th 
                       key={col.key} 
@@ -1123,6 +1156,17 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                       </td>
                       <td className="px-4 py-2 truncate text-[var(--text-primary)] font-mono font-medium text-xs" style={{ maxWidth: colWidths.due }}>
                         {formatCurrency(item.due)}
+                      </td>
+                      <td className="px-4 py-2 truncate text-[var(--text-secondary)] font-mono text-xs" style={{ maxWidth: colWidths.success_claim }}>
+                        {formatCurrency(item.success_claim || 0)}
+                      </td>
+                      <td className="px-4 py-2 truncate font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400" style={{ maxWidth: colWidths.percent_success }}>
+                        {item.percent_success !== undefined && item.percent_success !== null 
+                          ? `${Number(item.percent_success).toFixed(1)}%` 
+                          : (item.due && item.due > 0 && item.success_claim ? `${((item.success_claim / item.due) * 100).toFixed(1)}%` : '0%')}
+                      </td>
+                      <td className="px-4 py-2 truncate text-[var(--text-secondary)] text-xs" style={{ maxWidth: colWidths.note }} title={item.note || ''}>
+                        {item.note || '-'}
                       </td>
                     </tr>
                   )
@@ -1356,7 +1400,7 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 border-t border-[var(--border-color)] pt-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-[var(--border-color)] pt-5">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-[var(--text-secondary)]">Claim Value</label>
                   <input
@@ -1390,14 +1434,48 @@ const DataListKlaimView = forwardRef<DataListKlaimViewRef, DataListKlaimViewProp
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5 pt-2">
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Remark</label>
-                <input
-                  value={formData.remark}
-                  onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-                  className="input-field"
-                  placeholder="Additional notes"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Success Claim</label>
+                  <input
+                    type="number"
+                    value={formData.success_claim || ''}
+                    onChange={(e) => handleClaimValueTaxChange('success_claim', e.target.value)}
+                    onPaste={(e) => handleNumberPaste(e, 'success_claim')}
+                    className="input-field font-mono"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-emerald-600 dark:text-emerald-400 font-semibold">% Success (Calculated)</label>
+                  <input
+                    type="text"
+                    value={`${((formData.claim_value || 0) + (formData.tax || 0)) > 0 ? (((formData.success_claim || 0) / ((formData.claim_value || 0) + (formData.tax || 0))) * 100).toFixed(2) : '0.00'}%`}
+                    className="input-field bg-[var(--bg-secondary)] font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Remark</label>
+                  <input
+                    value={formData.remark || ''}
+                    onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+                    className="input-field"
+                    placeholder="Additional remarks"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">Note</label>
+                  <input
+                    value={formData.note || ''}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    className="input-field"
+                    placeholder="Additional notes"
+                  />
+                </div>
               </div>
 
               {editingItem && formData.invoice_date && (

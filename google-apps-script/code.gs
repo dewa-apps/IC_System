@@ -234,7 +234,7 @@ function doPost(e) {
       var headers = [
         "ID", "Display ID", "Claim Type", "Invoice Date", "Invoice No",
         "Description", "Subject Email", "Link Data", "WHP Name", "Partner",
-        "Claim Value", "Tax", "Due", "Subsidiary", "Status", "Remark"
+        "Claim Value", "Tax", "Due", "Success Claim", "% Success", "Subsidiary", "Status", "Remark", "Note"
       ];
 
       if (!data.append) {
@@ -252,6 +252,16 @@ function doPost(e) {
       }
       
       var rows = klaimList.map(function(item) {
+        var successVal = item.success_claim !== undefined && item.success_claim !== null ? item.success_claim : "";
+        var percentVal = "";
+        if (item.percent_success !== undefined && item.percent_success !== null) {
+          percentVal = item.percent_success + "%";
+        } else if (item.due && item.due > 0 && item.success_claim) {
+          percentVal = ((item.success_claim / item.due) * 100).toFixed(2) + "%";
+        } else if (item.success_claim !== undefined && item.success_claim !== null) {
+          percentVal = "0%";
+        }
+
         return [
           item.id || "",
           item.display_id || "",
@@ -266,9 +276,12 @@ function doPost(e) {
           item.claim_value !== undefined ? item.claim_value : "",
           item.tax !== undefined ? item.tax : "",
           item.due !== undefined ? item.due : "",
+          successVal,
+          percentVal,
           item.subsidiary || "",
           item.status || "",
-          item.remark || ""
+          item.remark || "",
+          item.note || ""
         ];
       });
       

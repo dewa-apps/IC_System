@@ -1675,9 +1675,12 @@ export default function App() {
           claim_value: item.claim_value,
           tax: item.tax,
           due: item.due,
+          success_claim: item.success_claim,
+          percent_success: item.percent_success,
           subsidiary: item.subsidiary,
           status: item.status,
-          remark: stripHtml(item.remark).slice(0, 100)
+          remark: stripHtml(item.remark).slice(0, 100),
+          note: item.note ? stripHtml(item.note).slice(0, 100) : ''
         }));
         await sendAll(minimalKlaim, 'backupDataListKlaimToSheets', 'sheetName', 'KLAIM', 'klaim');
       }

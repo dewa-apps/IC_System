@@ -137,6 +137,9 @@ export interface DataListKlaim {
   subsidiary: string;
   status: 'Open' | 'In Progress' | 'Waiting Approval' | 'Pending Finance' | 'Done';
   remark: string;
+  success_claim?: number;
+  percent_success?: number;
+  note?: string;
   created_at?: any;
   updated_at?: any;
 }

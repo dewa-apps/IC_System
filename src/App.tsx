@@ -357,12 +357,20 @@ function SortableTask({ task, onClick, getPriorityIcon, onReplyAll }: SortableTa
       </div>
       {hasTaskEmailMetadata(task) && onReplyAll && (
         <div className="mt-2.5 pt-2 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 min-w-0 text-[10px] text-[var(--text-muted)]">
-            <Mail className="w-3 h-3 shrink-0 text-[var(--accent-color)]" />
-            <span className="truncate">
-              {task.email_reply_all_sent_at ? 'Sudah dibalas' : 'Dari Email'}
+          {task.email_reply_all_sent_at ? (
+            <span
+              title={`Reply All sudah dikirim pada ${formatDateTime(task.email_reply_all_sent_at)}`}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold badge-success min-w-0 truncate"
+            >
+              <CheckCircle2 className="w-3 h-3 shrink-0" />
+              <span className="truncate">Sudah dibalas</span>
             </span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-1 min-w-0 text-[10px] text-[var(--text-muted)]">
+              <Mail className="w-3 h-3 shrink-0 text-[var(--accent-color)]" />
+              <span className="truncate">Dari Email</span>
+            </div>
+          )}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -371,10 +379,14 @@ function SortableTask({ task, onClick, getPriorityIcon, onReplyAll }: SortableTa
               onReplyAll(task);
             }}
             title={task.email_reply_all_sent_at ? `Terakhir dibalas ${formatDateTime(task.email_reply_all_sent_at)}` : 'Kirim Reply All ke email asal'}
-            className="px-2 py-1 text-[10px] font-semibold text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+            className={`px-2 py-1 text-[10px] font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 ${
+              task.email_reply_all_sent_at
+                ? 'text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[var(--bg-secondary)] hover:border-[var(--accent-color)]'
+                : 'text-[var(--accent-color)] hover:bg-[var(--badge-accent-bg)] hover:border-[var(--accent-color)]'
+            }`}
           >
             <Send className="w-2.5 h-2.5" />
-            <span>Reply All</span>
+            <span>{task.email_reply_all_sent_at ? 'Kirim Ulang' : 'Reply All'}</span>
           </button>
         </div>
       )}
@@ -618,7 +630,7 @@ function TaskListView({
     title: 400,
     status: 150,
     priority: 150,
-    email_reply: 115,
+    email_reply: 170,
     assignee: 150,
     author: 150,
     due_date: 150
@@ -784,18 +796,42 @@ function TaskListView({
                   </td>
                   <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     {hasTaskEmailMetadata(task) ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReplyAll(task);
-                        }}
-                        title={task.email_reply_all_sent_at ? `Terakhir dibalas ${formatDateTime(task.email_reply_all_sent_at)}` : 'Kirim Reply All ke email asal'}
-                        className="px-2 py-1 text-[11px] font-semibold text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-                      >
-                        <Send className="w-3 h-3" />
-                        <span>Reply All</span>
-                      </button>
+                      task.email_reply_all_sent_at ? (
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span
+                            title={`Reply All sudah dikirim pada ${formatDateTime(task.email_reply_all_sent_at)}`}
+                            className="px-2 py-0.5 text-[10px] font-semibold badge-success rounded inline-flex items-center gap-1 shrink-0"
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Terkirim</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReplyAll(task);
+                            }}
+                            title={`Kirim ulang Reply All (terakhir: ${formatDateTime(task.email_reply_all_sent_at)})`}
+                            className="px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+                          >
+                            <Send className="w-2.5 h-2.5" />
+                            <span>Ulang</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReplyAll(task);
+                          }}
+                          title="Kirim Reply All ke email asal"
+                          className="px-2 py-1 text-[11px] font-semibold text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Reply All</span>
+                        </button>
+                      )
                     ) : (
                       <span className="text-xs text-[var(--text-muted)]">-</span>
                     )}
@@ -4163,15 +4199,21 @@ export default function App() {
 
                 {editingTask && hasTaskEmailMetadata(editingTask) && (
                   <div className="px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
-                      <span className="text-xs font-bold text-[var(--text-primary)] truncate">
+                      <span className="text-xs font-bold text-[var(--text-primary)] whitespace-nowrap">
                         Kirim respons Email
                       </span>
                       {editingTask.email_reply_all_sent_at && (
-                        <span className="text-[11px] text-[var(--text-muted)] truncate">
-                          · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
-                        </span>
+                        <>
+                          <span className="px-2 py-0.5 text-[10px] font-semibold badge-success rounded inline-flex items-center gap-1 shrink-0">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Sudah Terkirim</span>
+                          </span>
+                          <span className="text-[11px] text-[var(--text-muted)] truncate">
+                            {formatDateTime(editingTask.email_reply_all_sent_at)}
+                          </span>
+                        </>
                       )}
                     </div>
                     <button
@@ -4186,10 +4228,14 @@ export default function App() {
                           triggerSource: 'manual'
                         })
                       }
-                      className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                      className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                        editingTask.email_reply_all_sent_at
+                          ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-primary)] border border-[var(--border-color)]'
+                          : 'btn-primary'
+                      }`}
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Reply All</span>
+                      <span>{editingTask.email_reply_all_sent_at ? 'Kirim Ulang' : 'Reply All'}</span>
                     </button>
                   </div>
                 )}
@@ -4866,6 +4912,9 @@ export default function App() {
           setEditingTask(prev =>
             prev && prev.id === targetId ? { ...prev, email_reply_all_sent_at: sentAtIso } : prev
           );
+          if (editingTask && editingTask.id === targetId) {
+            fetchActivities(targetId);
+          }
         }}
       />
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Send, Loader2, Mail, AlertCircle, Eye, FileText } from 'lucide-react';
+import { X, Send, Loader2, Mail, AlertCircle, Eye, FileText, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -153,6 +153,7 @@ export default function ReplyAllEmailModal({
         });
       } catch (updateErr) {
         console.warn('Failed to update email_reply_all_sent_at:', updateErr);
+        toast.error('Email terkirim, namun gagal menyimpan penanda status terkirim ke database.');
       }
 
       toast.success(
@@ -239,6 +240,24 @@ export default function ReplyAllEmailModal({
                 </label>
               )}
             </div>
+
+            {task.email_reply_all_sent_at && (
+              <div className="px-3 py-2 rounded-md badge-success border border-[var(--success-color)]/30 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>
+                  Task ini <strong>sudah pernah mengirim Reply All</strong> sebelumnya (
+                  {new Date(task.email_reply_all_sent_at).toLocaleString('id-ID', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Asia/Jakarta'
+                  })}
+                  ).
+                </span>
+              </div>
+            )}
 
             {errorMessage && (
               <div className="p-3 rounded-md border border-[var(--danger-color)] bg-[var(--badge-danger-bg)] text-[var(--danger-color)] text-xs flex items-start gap-2">

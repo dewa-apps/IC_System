@@ -141,6 +141,21 @@ const getInitials = (name: string) => {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
+const formatDateTime = (dateStr: string | undefined) => {
+  if (!dateStr) return '';
+  // SQLite CURRENT_TIMESTAMP is YYYY-MM-DD HH:MM:SS (UTC)
+  // Append Z if it's a date-time string without timezone to treat as UTC
+  const normalized = dateStr.includes(' ') ? dateStr.replace(' ', 'T') + 'Z' : 
+                    (dateStr.includes('T') && !dateStr.endsWith('Z') ? dateStr + 'Z' : dateStr);
+  return new Date(normalized).toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta'
+  });
+};
+
 const Logo = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg 
     viewBox="0 0 24 24" 
@@ -168,10 +183,11 @@ interface SortableTaskProps {
   task: Task;
   onClick: (task?: Task) => void;
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
+  onReplyAll?: (task: Task) => void;
   key?: React.Key;
 }
 
-function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
+function SortableTask({ task, onClick, getPriorityIcon, onReplyAll }: SortableTaskProps) {
   const {
     attributes,
     listeners,
@@ -339,6 +355,29 @@ function SortableTask({ task, onClick, getPriorityIcon }: SortableTaskProps) {
           </div>
         </div>
       </div>
+      {hasTaskEmailMetadata(task) && onReplyAll && (
+        <div className="mt-2.5 pt-2 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 min-w-0 text-[10px] text-[var(--text-muted)]">
+            <Mail className="w-3 h-3 shrink-0 text-[var(--accent-color)]" />
+            <span className="truncate">
+              {task.email_reply_all_sent_at ? 'Sudah dibalas' : 'Dari Email'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReplyAll(task);
+            }}
+            title={task.email_reply_all_sent_at ? `Terakhir dibalas ${formatDateTime(task.email_reply_all_sent_at)}` : 'Kirim Reply All ke email asal'}
+            className="px-2 py-1 text-[10px] font-semibold text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Send className="w-2.5 h-2.5" />
+            <span>Reply All</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -352,11 +391,12 @@ interface KanbanColumnProps {
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
   onRenameColumn: (id: TaskStatus, newLabel: string) => void;
   onSortTasks: (id: TaskStatus, criteria: SortCriteria) => void;
+  onReplyAll?: (task: Task) => void;
   currentUserRole?: string;
   key?: React.Key;
 }
 
-function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIcon, onRenameColumn, onSortTasks, currentUserRole }: KanbanColumnProps) {
+function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIcon, onRenameColumn, onSortTasks, onReplyAll, currentUserRole }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: id,
   });
@@ -488,7 +528,8 @@ function KanbanColumn({ id, label, tasks, onAddTask, onTaskClick, getPriorityIco
                   key={task.id} 
                   task={task} 
                   onClick={onTaskClick} 
-                  getPriorityIcon={getPriorityIcon} 
+                  getPriorityIcon={getPriorityIcon}
+                  onReplyAll={onReplyAll}
                 />
               ))}
             </AnimatePresence>
@@ -539,6 +580,7 @@ interface TaskListViewProps {
   users: AppUser[];
   onTaskClick: (task: Task) => void;
   onInlineUpdate: (taskId: string, field: string, value: any) => void;
+  onReplyAll: (task: Task) => void;
   getPriorityIcon: (priority: TaskPriority) => React.ReactNode;
   currentPage: number;
   totalPages: number;
@@ -555,6 +597,7 @@ function TaskListView({
   users,
   onTaskClick, 
   onInlineUpdate,
+  onReplyAll,
   getPriorityIcon,
   currentPage,
   totalPages,
@@ -575,6 +618,7 @@ function TaskListView({
     title: 400,
     status: 150,
     priority: 150,
+    email_reply: 115,
     assignee: 150,
     author: 150,
     due_date: 150
@@ -664,6 +708,10 @@ function TaskListView({
                 </div>
                 <ResizeHandle columnKey="priority" />
               </th>
+              <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative group" style={{ width: colWidths.email_reply }}>
+                <div className="overflow-hidden whitespace-nowrap">Email</div>
+                <ResizeHandle columnKey="email_reply" />
+              </th>
               <th className="px-4 py-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider relative group" style={{ width: colWidths.assignee }}>
                 <div className="overflow-hidden">Assignee</div>
                 <ResizeHandle columnKey="assignee" />
@@ -733,6 +781,24 @@ function TaskListView({
                         <option value="LOW">LOW</option>
                       </select>
                     </div>
+                  </td>
+                  <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
+                    {hasTaskEmailMetadata(task) ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReplyAll(task);
+                        }}
+                        title={task.email_reply_all_sent_at ? `Terakhir dibalas ${formatDateTime(task.email_reply_all_sent_at)}` : 'Kirim Reply All ke email asal'}
+                        className="px-2 py-1 text-[11px] font-semibold text-[var(--accent-color)] bg-[var(--bg-surface)] hover:bg-[var(--badge-accent-bg)] border border-[var(--border-color)] hover:border-[var(--accent-color)] rounded inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>Reply All</span>
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)]">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 truncate max-w-0" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
@@ -1913,21 +1979,6 @@ export default function App() {
     } catch (e) {
       console.error("Failed to mark all notifications as read", e);
     }
-  };
-
-  const formatDateTime = (dateStr: string | undefined) => {
-    if (!dateStr) return '';
-    // SQLite CURRENT_TIMESTAMP is YYYY-MM-DD HH:MM:SS (UTC)
-    // Append Z if it's a date-time string without timezone to treat as UTC
-    const normalized = dateStr.includes(' ') ? dateStr.replace(' ', 'T') + 'Z' : 
-                      (dateStr.includes('T') && !dateStr.endsWith('Z') ? dateStr + 'Z' : dateStr);
-    return new Date(normalized).toLocaleString('id-ID', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Asia/Jakarta'
-    });
   };
 
   const formatTimeAgo = (dateStr: string | any) => {
@@ -3676,6 +3727,13 @@ export default function App() {
                   getPriorityIcon={getPriorityIcon}
                   onRenameColumn={handleRenameColumn}
                   onSortTasks={handleSortTasks}
+                  onReplyAll={(task) =>
+                    setReplyAllContext({
+                      task,
+                      assigneeName: (task.assignee || '').trim() || undefined,
+                      triggerSource: 'manual'
+                    })
+                  }
                   currentUserRole={currentUserRole}
                 />
               ))}
@@ -3739,6 +3797,13 @@ export default function App() {
             users={users}
             onTaskClick={openModal} 
             onInlineUpdate={handleInlineUpdate}
+            onReplyAll={(task) =>
+              setReplyAllContext({
+                task,
+                assigneeName: (task.assignee || '').trim() || undefined,
+                triggerSource: 'manual'
+              })
+            }
             getPriorityIcon={getPriorityIcon}
             currentPage={currentPage}
             totalPages={totalPages}
@@ -3987,39 +4052,6 @@ export default function App() {
                   </div>
                 )}
 
-                {editingTask && hasTaskEmailMetadata(editingTask) && (
-                  <div className="px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
-                      <span className="text-xs font-bold text-[var(--text-primary)] truncate">
-                        Kirim respons Email
-                      </span>
-                      {editingTask.email_reply_all_sent_at && (
-                        <span className="text-[11px] text-[var(--text-muted)] truncate">
-                          · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setReplyAllContext({
-                          task: {
-                            ...editingTask,
-                            assignee: formData.assignee || editingTask.assignee
-                          },
-                          assigneeName: (formData.assignee || editingTask.assignee || '').trim() || undefined,
-                          triggerSource: 'manual'
-                        })
-                      }
-                      className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Reply All</span>
-                    </button>
-                  </div>
-                )}
-
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Category</label>
@@ -4128,6 +4160,39 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+
+                {editingTask && hasTaskEmailMetadata(editingTask) && (
+                  <div className="px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
+                      <span className="text-xs font-bold text-[var(--text-primary)] truncate">
+                        Kirim respons Email
+                      </span>
+                      {editingTask.email_reply_all_sent_at && (
+                        <span className="text-[11px] text-[var(--text-muted)] truncate">
+                          · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReplyAllContext({
+                          task: {
+                            ...editingTask,
+                            assignee: formData.assignee || editingTask.assignee
+                          },
+                          assigneeName: (formData.assignee || editingTask.assignee || '').trim() || undefined,
+                          triggerSource: 'manual'
+                        })
+                      }
+                      className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Reply All</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Sub-tasks Section */}
                 <div className="mt-8">

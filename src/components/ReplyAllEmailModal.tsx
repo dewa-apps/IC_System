@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X, Send, Loader2, Mail, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Send, Loader2, Mail, AlertCircle, Eye, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { Task } from '../types';
 import { apiFetch } from '../apiInterceptor';
 import { db } from '../firebase';
-import { buildReplyAllDraft } from '../utils/emailReply';
+import { buildProgressEmailContent, buildReplyAllDraft } from '../utils/emailReply';
 
 interface ReplyAllEmailModalProps {
   isOpen: boolean;
@@ -17,12 +17,6 @@ interface ReplyAllEmailModalProps {
   onClose: () => void;
   onSent?: (sentAtIso: string) => void;
 }
-
-const escapeHtml = (text: string) =>
-  text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 
 export default function ReplyAllEmailModal({
   isOpen,
@@ -36,7 +30,12 @@ export default function ReplyAllEmailModal({
   const [subject, setSubject] = useState('');
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
-  const [body, setBody] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [picName, setPicName] = useState('');
+  const [customNote, setCustomNote] = useState('');
+  const [customPlainBody, setCustomPlainBody] = useState('');
+  const [isPlainManuallyEdited, setIsPlainManuallyEdited] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'preview' | 'plain'>('preview');
   const [forceFallback, setForceFallback] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -47,11 +46,28 @@ export default function ReplyAllEmailModal({
       setSubject(draft.subject);
       setTo(draft.to);
       setCc(draft.cc);
-      setBody(draft.body);
+      setRecipientName(draft.recipientName);
+      setPicName(draft.picName);
+      setCustomNote('');
+      setCustomPlainBody(draft.body);
+      setIsPlainManuallyEdited(false);
+      setPreviewTab('preview');
       setForceFallback(!task.email_thread_id);
       setErrorMessage(null);
     }
   }, [isOpen, task, assigneeName]);
+
+  const generatedContent = useMemo(() => {
+    if (!task) return { htmlBody: '', plainBody: '' };
+    return buildProgressEmailContent({
+      task,
+      recipientName,
+      picName,
+      customNote
+    });
+  }, [task, recipientName, picName, customNote]);
+
+  const effectivePlainBody = isPlainManuallyEdited ? customPlainBody : generatedContent.plainBody;
 
   if (!isOpen || !task) return null;
 
@@ -70,7 +86,7 @@ export default function ReplyAllEmailModal({
       setErrorMessage('Sub Email tidak boleh kosong.');
       return;
     }
-    if (!body.trim()) {
+    if (!effectivePlainBody.trim()) {
       setErrorMessage('Isi pesan balasan tidak boleh kosong.');
       return;
     }
@@ -81,8 +97,6 @@ export default function ReplyAllEmailModal({
 
     setIsSending(true);
     try {
-      const htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(body).replace(/\n/g, '<br/>')}</div>`;
-
       const response = await apiFetch('/api/gas-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,8 +106,8 @@ export default function ReplyAllEmailModal({
           to: to.trim(),
           cc: cc.trim(),
           subject: subject.trim(),
-          body,
-          htmlBody,
+          body: effectivePlainBody,
+          htmlBody: generatedContent.htmlBody,
           forceFallback
         })
       });
@@ -164,7 +178,7 @@ export default function ReplyAllEmailModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-          className="relative bg-[var(--bg-surface)] border border-[var(--border-color)] w-full max-w-xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+          className="relative bg-[var(--bg-surface)] border border-[var(--border-color)] w-full max-w-2xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
         >
           {/* Header */}
           <div className="px-6 py-4 border-b border-[var(--border-color)] flex items-start justify-between gap-4">
@@ -212,7 +226,7 @@ export default function ReplyAllEmailModal({
                     onChange={(e) => setForceFallback(e.target.checked)}
                     className="rounded border-[var(--border-color)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
                   />
-                  <span>Kirim manual sesuai daftar To &amp; CC yang diedit (mode fallback langsung)</span>
+                  <span>Kirim langsung sesuai daftar To &amp; CC di bawah (mode fallback langsung)</span>
                 </label>
               )}
             </div>
@@ -242,44 +256,133 @@ export default function ReplyAllEmailModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  To (From &amp; To Asli)
+                  To (Pengirim / From Asli)
                 </label>
                 <input
                   type="text"
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
                   disabled={isSending}
-                  placeholder="email1@domain.com, email2@domain.com"
+                  placeholder="pengirim@domain.com"
                   className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  CC
+                  CC (To Asli &amp; CC Asli)
                 </label>
                 <input
                   type="text"
                   value={cc}
                   onChange={(e) => setCc(e.target.value)}
                   disabled={isSending}
-                  placeholder="cc1@domain.com, cc2@domain.com"
+                  placeholder="to-asli@domain.com, cc@domain.com"
                   className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  Nama Sapaan (Kepada Yth.)
+                </label>
+                <input
+                  type="text"
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  disabled={isSending}
+                  placeholder="Nama requestor"
+                  className="w-full px-3 py-2 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  PIC (Assignee)
+                </label>
+                <input
+                  type="text"
+                  value={picName}
+                  onChange={(e) => setPicName(e.target.value)}
+                  disabled={isSending}
+                  placeholder="Nama PIC yang memproses"
+                  className="w-full px-3 py-2 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                Pesan Balasan
+                Catatan Tambahan (Opsional)
               </label>
               <textarea
-                rows={7}
-                required
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
+                rows={2}
+                value={customNote}
+                onChange={(e) => setCustomNote(e.target.value)}
                 disabled={isSending}
+                placeholder="Tambahkan pesan khusus jika diperlukan (akan tampil di bawah status)..."
                 className="w-full px-3 py-2 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] leading-relaxed"
               />
+            </div>
+
+            {/* Email Preview / Plain Text Fallback */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-[var(--text-muted)]">
+                  Isi Pesan Balasan
+                </span>
+                <div className="flex items-center gap-1 p-0.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('preview')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      previewTab === 'preview'
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Preview Template</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isPlainManuallyEdited) {
+                        setCustomPlainBody(generatedContent.plainBody);
+                      }
+                      setPreviewTab('plain');
+                    }}
+                    className={`px-2.5 py-1 text-xs font-medium rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      previewTab === 'plain'
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Teks Plain</span>
+                  </button>
+                </div>
+              </div>
+
+              {previewTab === 'preview' ? (
+                <div className="p-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md overflow-x-auto">
+                  <div
+                    className="mx-auto"
+                    dangerouslySetInnerHTML={{ __html: generatedContent.htmlBody }}
+                  />
+                </div>
+              ) : (
+                <textarea
+                  rows={10}
+                  value={effectivePlainBody}
+                  onChange={(e) => {
+                    setCustomPlainBody(e.target.value);
+                    setIsPlainManuallyEdited(true);
+                  }}
+                  disabled={isSending}
+                  className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] leading-relaxed"
+                />
+              )}
             </div>
           </form>
 

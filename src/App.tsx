@@ -3988,63 +3988,35 @@ export default function App() {
                 )}
 
                 {editingTask && hasTaskEmailMetadata(editingTask) && (
-                  <div className="p-4 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg space-y-3">
-                    <div className="flex items-center justify-between gap-3 pb-2 border-b border-[var(--border-color)]">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
-                        <span className="text-xs font-bold text-[var(--text-primary)] truncate">
-                          Detail Email Asal
+                  <div className="px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
+                      <span className="text-xs font-bold text-[var(--text-primary)] truncate">
+                        Kirim respons Email
+                      </span>
+                      {editingTask.email_reply_all_sent_at && (
+                        <span className="text-[11px] text-[var(--text-muted)] truncate">
+                          · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
                         </span>
-                        {editingTask.email_reply_all_sent_at && (
-                          <span className="text-[11px] text-[var(--text-muted)] truncate">
-                            · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setReplyAllContext({
-                            task: {
-                              ...editingTask,
-                              assignee: formData.assignee || editingTask.assignee
-                            },
-                            assigneeName: (formData.assignee || editingTask.assignee || '').trim() || undefined,
-                            triggerSource: 'manual'
-                          })
-                        }
-                        className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Reply All</span>
-                      </button>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                      <div className="sm:col-span-2">
-                        <span className="text-[var(--text-muted)] font-medium">Sub Email: </span>
-                        <span className="text-[var(--text-primary)] font-medium break-words">
-                          {editingTask.email_subject || editingTask.title}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[var(--text-muted)] font-medium">From: </span>
-                        <span className="text-[var(--text-secondary)] font-mono break-all">
-                          {editingTask.email_from || editingTask.requestor || '-'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[var(--text-muted)] font-medium">To: </span>
-                        <span className="text-[var(--text-secondary)] font-mono break-all">
-                          {editingTask.email_to || '-'}
-                        </span>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <span className="text-[var(--text-muted)] font-medium">CC: </span>
-                        <span className="text-[var(--text-secondary)] font-mono break-all">
-                          {editingTask.email_cc || '-'}
-                        </span>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReplyAllContext({
+                          task: {
+                            ...editingTask,
+                            assignee: formData.assignee || editingTask.assignee
+                          },
+                          assigneeName: (formData.assignee || editingTask.assignee || '').trim() || undefined,
+                          triggerSource: 'manual'
+                        })
+                      }
+                      className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Reply All</span>
+                    </button>
                   </div>
                 )}
 

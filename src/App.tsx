@@ -45,7 +45,8 @@ import {
   Lock,
   Bell,
   RefreshCw,
-  LayoutDashboard
+  LayoutDashboard,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -84,6 +85,8 @@ import TopLinksMenu from './components/TopLinksMenu';
 import FloatingWidgetMenu from './components/FloatingWidgetMenu';
 import CommandPalette from './components/CommandPalette';
 import EmbedView from './components/EmbedView';
+import ReplyAllEmailModal from './components/ReplyAllEmailModal';
+import { hasTaskEmailMetadata } from './utils/emailReply';
 import Papa from 'papaparse';
 
 // Helper to strip HTML tags for line-clamp preview
@@ -1377,6 +1380,11 @@ export default function App() {
     subtasks: [] as SubTask[],
     recurring_pattern: 'none' as 'none' | 'daily' | 'weekly' | 'monthly'
   });
+  const [replyAllContext, setReplyAllContext] = useState<{
+    task: Task;
+    assigneeName?: string;
+    triggerSource: 'assign' | 'manual';
+  } | null>(null);
 
   const getUpdatedStatus = (subtasks: SubTask[], currentStatus: TaskStatus): TaskStatus => {
     if (!subtasks || subtasks.length === 0) return currentStatus;
@@ -2206,6 +2214,10 @@ export default function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingTask(true);
+    const previousAssignee = (editingTask?.assignee || '').trim();
+    const nextAssignee = (formData.assignee || '').trim();
+    const existingTaskSnapshot = editingTask;
+
     try {
       const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
       const method = editingTask ? 'PATCH' : 'POST';
@@ -2217,6 +2229,7 @@ export default function App() {
       });
 
       if (res.ok) {
+        let savedTask: Task;
         if (!editingTask && pendingFiles.length > 0) {
           const newTask = await res.json();
           // Upload pending files for the new task
@@ -2232,6 +2245,7 @@ export default function App() {
             if (prev.some(t => t.id === newTask.id)) return prev.map(t => t.id === newTask.id ? newTask : t);
             return [newTask, ...prev];
           });
+          savedTask = newTask;
         } else {
           const resultTask = await res.json();
           if (editingTask) {
@@ -2242,10 +2256,19 @@ export default function App() {
                return [resultTask, ...prev];
              });
           }
+          savedTask = { ...(existingTaskSnapshot || {}), ...resultTask };
         }
         
         closeModal();
-        toast.success(editingTask ? "Task updated successfully" : "Task created successfully");
+        toast.success(existingTaskSnapshot ? "Task updated successfully" : "Task created successfully");
+
+        if (nextAssignee && nextAssignee !== previousAssignee && hasTaskEmailMetadata(savedTask)) {
+          setReplyAllContext({
+            task: savedTask,
+            assigneeName: nextAssignee,
+            triggerSource: 'assign'
+          });
+        }
       } else {
         toast.error("Failed to save task");
       }
@@ -2662,6 +2685,9 @@ export default function App() {
   }, []);
 
   const handleInlineUpdate = async (taskId: string, field: string, value: any) => {
+    const targetTask = tasks.find(t => String(t.id) === String(taskId));
+    const previousAssignee = (targetTask?.assignee || '').trim();
+
     // Optimistic update
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
     
@@ -2672,6 +2698,17 @@ export default function App() {
       });
       
       if (!res.ok) throw new Error('Failed to update task');
+
+      if (field === 'assignee') {
+        const nextAssignee = String(value || '').trim();
+        if (nextAssignee && nextAssignee !== previousAssignee && targetTask && hasTaskEmailMetadata(targetTask)) {
+          setReplyAllContext({
+            task: { ...targetTask, assignee: nextAssignee },
+            assigneeName: nextAssignee,
+            triggerSource: 'assign'
+          });
+        }
+      }
 
       if (field === 'status' && (value === 'DONE' || value === 'CLOSED')) {
         setTimeout(() => fetchTasks(), 1000);
@@ -3950,6 +3987,67 @@ export default function App() {
                   </div>
                 )}
 
+                {editingTask && hasTaskEmailMetadata(editingTask) && (
+                  <div className="p-4 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg space-y-3">
+                    <div className="flex items-center justify-between gap-3 pb-2 border-b border-[var(--border-color)]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
+                        <span className="text-xs font-bold text-[var(--text-primary)] truncate">
+                          Detail Email Asal
+                        </span>
+                        {editingTask.email_reply_all_sent_at && (
+                          <span className="text-[11px] text-[var(--text-muted)] truncate">
+                            · Terakhir dibalas {formatDateTime(editingTask.email_reply_all_sent_at)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReplyAllContext({
+                            task: {
+                              ...editingTask,
+                              assignee: formData.assignee || editingTask.assignee
+                            },
+                            assigneeName: (formData.assignee || editingTask.assignee || '').trim() || undefined,
+                            triggerSource: 'manual'
+                          })
+                        }
+                        className="px-3 py-1.5 btn-primary text-xs font-semibold rounded flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Reply All</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                      <div className="sm:col-span-2">
+                        <span className="text-[var(--text-muted)] font-medium">Sub Email: </span>
+                        <span className="text-[var(--text-primary)] font-medium break-words">
+                          {editingTask.email_subject || editingTask.title}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[var(--text-muted)] font-medium">From: </span>
+                        <span className="text-[var(--text-secondary)] font-mono break-all">
+                          {editingTask.email_from || editingTask.requestor || '-'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[var(--text-muted)] font-medium">To: </span>
+                        <span className="text-[var(--text-secondary)] font-mono break-all">
+                          {editingTask.email_to || '-'}
+                        </span>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <span className="text-[var(--text-muted)] font-medium">CC: </span>
+                        <span className="text-[var(--text-secondary)] font-mono break-all">
+                          {editingTask.email_cc || '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Category</label>
@@ -4714,6 +4812,24 @@ export default function App() {
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         onNavigate={(view) => setCurrentView(view)}
+      />
+      <ReplyAllEmailModal
+        isOpen={Boolean(replyAllContext)}
+        task={replyAllContext?.task || null}
+        assigneeName={replyAllContext?.assigneeName}
+        triggerSource={replyAllContext?.triggerSource || 'manual'}
+        currentUserName={myNameInDb || currentUserName}
+        onClose={() => setReplyAllContext(null)}
+        onSent={(sentAtIso) => {
+          if (!replyAllContext?.task) return;
+          const targetId = replyAllContext.task.id;
+          setTasks(prev =>
+            prev.map(t => (t.id === targetId ? { ...t, email_reply_all_sent_at: sentAtIso } : t))
+          );
+          setEditingTask(prev =>
+            prev && prev.id === targetId ? { ...prev, email_reply_all_sent_at: sentAtIso } : prev
+          );
+        }}
       />
     </div>
   );

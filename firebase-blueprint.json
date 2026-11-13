@@ -36,6 +36,35 @@
           "type": "string",
           "format": "date-time",
           "description": "When the task was last updated."
+        },
+        "email_thread_id": {
+          "type": "string",
+          "description": "Gmail thread ID if the task originated from email."
+        },
+        "email_message_id": {
+          "type": "string",
+          "description": "Original email message ID."
+        },
+        "email_subject": {
+          "type": "string",
+          "description": "Original email subject."
+        },
+        "email_from": {
+          "type": "string",
+          "description": "Original email sender address."
+        },
+        "email_to": {
+          "type": "string",
+          "description": "Original email To recipients."
+        },
+        "email_cc": {
+          "type": "string",
+          "description": "Original email CC recipients."
+        },
+        "email_reply_all_sent_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent Reply All sent from the app."
         }
       },
       "required": ["title", "status", "priority", "authorId", "createdAt", "updatedAt"]

@@ -41,6 +41,78 @@ function doPost(e) {
         message: 'Email sent' 
       })).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // Jika request adalah untuk Reply All ke thread email task (dengan fallback daftar penerima)
+    if (data.action === 'replyAllEmail') {
+      var threadId = (data.threadId || "").toString().trim();
+      var forceFallback = Boolean(data.forceFallback);
+      var toRecipients = (data.to || "").toString().trim();
+      var ccRecipients = (data.cc || "").toString().trim();
+      var emailSubject = (data.subject || "Task Update").toString().trim();
+      var emailBody = (data.body || "").toString();
+      var emailHtmlBody = data.htmlBody ? data.htmlBody.toString() : "";
+      var gmailFallbackReason = "";
+
+      if (threadId && !forceFallback) {
+        try {
+          var thread = GmailApp.getThreadById(threadId);
+          if (thread) {
+            var replyOptions = {};
+            if (emailHtmlBody) {
+              replyOptions.htmlBody = emailHtmlBody;
+            }
+            if (ccRecipients) {
+              replyOptions.cc = ccRecipients;
+            }
+            thread.replyAll(emailBody, replyOptions);
+            return ContentService.createTextOutput(JSON.stringify({
+              status: 'success',
+              mode: 'gmail_thread_reply_all',
+              message: 'Reply All berhasil dikirim ke thread Gmail asli.'
+            })).setMimeType(ContentService.MimeType.JSON);
+          } else {
+            gmailFallbackReason = 'Thread tidak ditemukan di akun Gmail GAS ini.';
+          }
+        } catch (gmailErr) {
+          gmailFallbackReason = gmailErr.toString();
+        }
+      }
+
+      // Fallback: kirim melalui MailApp ke daftar penerima (From + To dan CC)
+      var finalTo = toRecipients;
+      var finalCc = ccRecipients;
+      if (!finalTo && finalCc) {
+        finalTo = finalCc;
+        finalCc = "";
+      }
+
+      if (!finalTo) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'error',
+          message: 'Tidak ada alamat penerima (To/CC) dan thread Gmail tidak dapat diakses. ' + gmailFallbackReason
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var mailOptions = {
+        to: finalTo,
+        subject: emailSubject,
+        body: emailBody
+      };
+      if (finalCc) {
+        mailOptions.cc = finalCc;
+      }
+      if (emailHtmlBody) {
+        mailOptions.htmlBody = emailHtmlBody;
+      }
+
+      MailApp.sendEmail(mailOptions);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        mode: 'mailapp_fallback',
+        message: 'Reply All dikirim menggunakan daftar penerima email (To & CC).',
+        fallbackReason: gmailFallbackReason || (forceFallback ? 'Manual recipient list mode' : 'No threadId')
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     
     // Jika request adalah untuk backup ke Google Sheets
     if (data.action === 'backupToSheets') {
@@ -614,3 +686,29 @@ function doPost(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
+
+/*
+ * REFERENSI SCRIPT PENGIRIM EMAIL MASUK KE WEBHOOK (/api/webhooks/email-task)
+ * Pastikan script Gmail-to-Task Anda menyertakan field email_* berikut pada payload taskData:
+ *
+ * var thread = ...; // GmailThread
+ * var msg = thread.getMessages()[0]; // atau pesan terbaru
+ * var payload = {
+ *   secret: "SIRCLO_INVENTORY_SECRET_TASK",
+ *   taskData: {
+ *     title: msg.getSubject(),
+ *     description: msg.getPlainBody(),
+ *     status: "TODO",
+ *     priority: "MEDIUM",
+ *     requestor: msg.getFrom(),
+ *     authorId: msg.getFrom(),
+ *     email_thread_id: thread.getId(),
+ *     email_message_id: msg.getId(),
+ *     email_subject: msg.getSubject(),
+ *     email_from: msg.getFrom(),
+ *     email_to: msg.getTo(),
+ *     email_cc: msg.getCc()
+ *   }
+ * };
+ */
+

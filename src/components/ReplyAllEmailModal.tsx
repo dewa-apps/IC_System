@@ -1,0 +1,310 @@
+import React, { useState, useEffect } from 'react';
+import { X, Send, Loader2, Mail, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
+import { Task } from '../types';
+import { apiFetch } from '../apiInterceptor';
+import { db } from '../firebase';
+import { buildReplyAllDraft } from '../utils/emailReply';
+
+interface ReplyAllEmailModalProps {
+  isOpen: boolean;
+  task: Task | null;
+  assigneeName?: string;
+  triggerSource: 'assign' | 'manual';
+  currentUserName: string;
+  onClose: () => void;
+  onSent?: (sentAtIso: string) => void;
+}
+
+const escapeHtml = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+export default function ReplyAllEmailModal({
+  isOpen,
+  task,
+  assigneeName,
+  triggerSource,
+  currentUserName,
+  onClose,
+  onSent
+}: ReplyAllEmailModalProps) {
+  const [subject, setSubject] = useState('');
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [body, setBody] = useState('');
+  const [forceFallback, setForceFallback] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && task) {
+      const draft = buildReplyAllDraft(task, assigneeName);
+      setSubject(draft.subject);
+      setTo(draft.to);
+      setCc(draft.cc);
+      setBody(draft.body);
+      setForceFallback(!task.email_thread_id);
+      setErrorMessage(null);
+    }
+  }, [isOpen, task, assigneeName]);
+
+  if (!isOpen || !task) return null;
+
+  const hasThreadId = Boolean(task.email_thread_id?.trim());
+  const displayId = task.display_id || `IC-${task.id}`;
+  const contextLabel =
+    triggerSource === 'assign' && assigneeName
+      ? `Assignee diperbarui ke ${assigneeName}`
+      : 'Balas Email Manual';
+
+  const handleSendReplyAll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!subject.trim()) {
+      setErrorMessage('Sub Email tidak boleh kosong.');
+      return;
+    }
+    if (!body.trim()) {
+      setErrorMessage('Isi pesan balasan tidak boleh kosong.');
+      return;
+    }
+    if ((!hasThreadId || forceFallback) && !to.trim() && !cc.trim()) {
+      setErrorMessage('Minimal satu alamat penerima pada To atau CC harus diisi.');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const htmlBody = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(body).replace(/\n/g, '<br/>')}</div>`;
+
+      const response = await apiFetch('/api/gas-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'replyAllEmail',
+          threadId: task.email_thread_id || '',
+          to: to.trim(),
+          cc: cc.trim(),
+          subject: subject.trim(),
+          body,
+          htmlBody,
+          forceFallback
+        })
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || result.status !== 'success') {
+        const msg = result?.message || result?.error || 'Gagal mengirim Reply All melalui Google Apps Script.';
+        throw new Error(msg);
+      }
+
+      const modeText =
+        result.mode === 'gmail_thread_reply_all'
+          ? 'Thread Gmail Reply All'
+          : 'Fallback Daftar Penerima (To & CC)';
+
+      const sentAtIso = new Date().toISOString();
+
+      try {
+        await addDoc(collection(db, 'activity_log'), {
+          task_id: String(task.id),
+          user: currentUserName || 'System',
+          action: 'Sent Email Reply All',
+          details: `Subject: ${subject.trim()}\nTo: ${to.trim() || '-'}\nCC: ${cc.trim() || '-'}\nMode: ${modeText}`,
+          created_at: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.warn('Failed to write activity log for email reply all:', logErr);
+      }
+
+      try {
+        await updateDoc(doc(db, 'tasks', String(task.id)), {
+          email_reply_all_sent_at: sentAtIso,
+          updated_at: serverTimestamp()
+        });
+      } catch (updateErr) {
+        console.warn('Failed to update email_reply_all_sent_at:', updateErr);
+      }
+
+      toast.success(
+        result.mode === 'gmail_thread_reply_all'
+          ? 'Reply All berhasil dikirim ke thread email.'
+          : 'Reply All berhasil dikirim ke daftar penerima (To & CC).'
+      );
+      onSent?.(sentAtIso);
+      onClose();
+    } catch (err: any) {
+      const message = err?.message || 'Terjadi kesalahan saat mengirim email.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => !isSending && onClose()}
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        />
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 12 }}
+          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          className="relative bg-[var(--bg-surface)] border border-[var(--border-color)] w-full max-w-xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        >
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-[var(--border-color)] flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
+                <h3 className="text-base font-bold text-[var(--text-primary)] truncate">
+                  Konfirmasi Reply All Email
+                </h3>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-muted)] truncate">
+                <span className="font-mono">{displayId}</span>
+                <span aria-hidden="true">·</span>
+                <span className="truncate">{contextLabel}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSending}
+              className="p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] rounded-md transition-colors disabled:opacity-50 shrink-0"
+              aria-label="Tutup konfirmasi email"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Form Body */}
+          <form id="reply-all-email-form" onSubmit={handleSendReplyAll} className="p-6 overflow-y-auto flex-1 space-y-4">
+            {/* Delivery Route Info */}
+            <div className="pb-3 border-b border-[var(--border-color)] text-xs text-[var(--text-secondary)] flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-[var(--text-primary)]">Jalur Pengiriman:</span>
+                <span>
+                  {hasThreadId && !forceFallback
+                    ? 'Thread Gmail Asli (otomatis fallback ke To & CC bila akun berbeda)'
+                    : 'Daftar Penerima Email (To & CC)'}
+                </span>
+              </div>
+              {hasThreadId && (
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                  <input
+                    type="checkbox"
+                    checked={forceFallback}
+                    onChange={(e) => setForceFallback(e.target.checked)}
+                    className="rounded border-[var(--border-color)] text-[var(--accent-color)] focus:ring-[var(--border-focus)]"
+                  />
+                  <span>Kirim manual sesuai daftar To &amp; CC yang diedit (mode fallback langsung)</span>
+                </label>
+              )}
+            </div>
+
+            {errorMessage && (
+              <div className="p-3 rounded-md border border-[var(--danger-color)] bg-[var(--badge-danger-bg)] text-[var(--danger-color)] text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                Sub Email
+              </label>
+              <input
+                type="text"
+                required
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                disabled={isSending}
+                placeholder="Re: Subjek email..."
+                className="w-full px-3 py-2 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  To (From &amp; To Asli)
+                </label>
+                <input
+                  type="text"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  disabled={isSending}
+                  placeholder="email1@domain.com, email2@domain.com"
+                  className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  CC
+                </label>
+                <input
+                  type="text"
+                  value={cc}
+                  onChange={(e) => setCc(e.target.value)}
+                  disabled={isSending}
+                  placeholder="cc1@domain.com, cc2@domain.com"
+                  className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                Pesan Balasan
+              </label>
+              <textarea
+                rows={7}
+                required
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                disabled={isSending}
+                className="w-full px-3 py-2 text-sm border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] leading-relaxed"
+              />
+            </div>
+          </form>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t border-[var(--border-color)] bg-[var(--bg-secondary)] flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSending}
+              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] rounded transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
+            >
+              {triggerSource === 'assign' ? 'Lewati' : 'Batal'}
+            </button>
+            <button
+              type="submit"
+              form="reply-all-email-form"
+              disabled={isSending}
+              className="px-4 py-2 btn-primary text-sm font-medium rounded transition-colors disabled:opacity-50 flex items-center gap-2 whitespace-nowrap shrink-0"
+            >
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <span>{isSending ? 'Mengirim...' : 'Kirim Reply All'}</span>
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+}

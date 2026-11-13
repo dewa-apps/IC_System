@@ -131,8 +131,34 @@ async function startServer() {
         }
       }
 
-      if (taskData.email_thread_id) {
-        const existingInfoQuery = query(collection(db, "tasks"), where("email_thread_id", "==", taskData.email_thread_id), limit(1));
+      const normalizeEmailList = (raw: unknown): string => {
+        if (!raw) return "";
+        const items = Array.isArray(raw)
+          ? raw.map(v => String(v || ""))
+          : String(raw).split(/[,;]+/);
+        const seen = new Set<string>();
+        const cleaned: string[] = [];
+        for (const item of items) {
+          const trimmed = item.trim();
+          if (!trimmed) continue;
+          const match = trimmed.match(/<([^>]+)>/);
+          const addr = (match ? match[1] : trimmed).trim().toLowerCase();
+          if (!addr || seen.has(addr)) continue;
+          seen.add(addr);
+          cleaned.push(trimmed);
+        }
+        return cleaned.join(", ");
+      };
+
+      const normalizedThreadId = String(taskData.email_thread_id || taskData.thread_id || taskData.threadId || "").trim();
+      const normalizedMessageId = String(taskData.email_message_id || taskData.message_id || taskData.messageId || "").trim();
+      const normalizedEmailSubject = String(taskData.email_subject || taskData.subject || (normalizedThreadId ? taskData.title : "") || "").trim();
+      const normalizedEmailFrom = normalizeEmailList(taskData.email_from || taskData.from || (normalizedThreadId ? taskData.requestor : ""));
+      const normalizedEmailTo = normalizeEmailList(taskData.email_to || taskData.to);
+      const normalizedEmailCc = normalizeEmailList(taskData.email_cc || taskData.cc);
+
+      if (normalizedThreadId) {
+        const existingInfoQuery = query(collection(db, "tasks"), where("email_thread_id", "==", normalizedThreadId), limit(1));
         const existingInfo = await getDocs(existingInfoQuery);
         if (!existingInfo.empty) {
           return res.status(200).json({ success: true, message: "Task already created for this email thread.", id: existingInfo.docs[0].id });
@@ -151,14 +177,34 @@ async function startServer() {
         return `IC-${String(nextNum).padStart(5, '0')}`;
       });
 
-      const result = await addDoc(collection(db, "tasks"), {
+      const hasEmailOrigin = Boolean(
+        normalizedThreadId ||
+        normalizedMessageId ||
+        normalizedEmailSubject ||
+        normalizedEmailFrom ||
+        normalizedEmailTo ||
+        normalizedEmailCc
+      );
+
+      const newTaskPayload: Record<string, any> = {
         ...taskData,
         authorName: authorName,
         division: division,
         display_id: newDisplayId,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
-      });
+      };
+
+      if (hasEmailOrigin) {
+        newTaskPayload.email_thread_id = normalizedThreadId;
+        newTaskPayload.email_message_id = normalizedMessageId;
+        newTaskPayload.email_subject = normalizedEmailSubject;
+        newTaskPayload.email_from = normalizedEmailFrom;
+        newTaskPayload.email_to = normalizedEmailTo;
+        newTaskPayload.email_cc = normalizedEmailCc;
+      }
+
+      const result = await addDoc(collection(db, "tasks"), newTaskPayload);
 
       try {
         await addDoc(collection(db, "activity_log"), {

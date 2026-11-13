@@ -6,7 +6,8 @@ Untuk merealisasikan flow pembuatan task otomatis via email dari `inventorycontr
 Aplikasi Anda sekarang memiliki Endpoint Webhook `POST /api/webhooks/email-task` yang sudah siap menerima payload dari Google Apps Script. Server juga otomatis akan:
 - Menghindari duplikasi dengan mengecek `email_thread_id`
 - Memberikan Task ID berurutan (`IC-000XX`)
-- Melengkapi *Division* sesuai riwayat task Requestor sebelumnya.
+- Melengkapi *Division* sesuai riwayat task Requestor sebelumnya
+- Menyimpan detail metadata email (`email_thread_id`, `email_message_id`, `email_subject`, `email_from`, `email_to`, `email_cc`) agar aplikasi dapat menampilkan info asal email dan mengirim **Reply All** saat task di-assign atau dibalas manual.
 
 > **Catatan Server**: Jika sebelumnya Anda menghapus file `firebase-applet-config.json`, harap jalankan Firebase setup kembali karena file tersebut terhapus di lingkungan pengembangan. Aplikasi saat ini menggunakan konfigurasi demo.
 
@@ -169,7 +170,13 @@ function processEmailTasks() {
     var creatorRaw = taskMessage.getFrom();
     var creatorName = extractNameFromEmail(creatorRaw);
     
-    var summary = cleanSubject(firstMessage.getSubject());
+    var rawSubject = firstMessage.getSubject() || requestMessage.getSubject() || "";
+    var summary = cleanSubject(rawSubject);
+
+    // Kumpulkan seluruh peserta email (From, To, CC) untuk kebutuhan Reply All dari detail task
+    var emailFrom = requestorRaw || "";
+    var emailTo = mergeEmailHeaders([requestMessage.getTo(), taskMessage.getTo()]);
+    var emailCc = mergeEmailHeaders([requestMessage.getCc(), taskMessage.getCc()]);
     
     var taskData = {
       title: summary,
@@ -182,6 +189,11 @@ function processEmailTasks() {
       request_date: formatDateStr(requestDate),
       due_date: formatDateStr(dueDate),
       email_thread_id: thread.getId(),
+      email_message_id: requestMessage.getId(),
+      email_subject: rawSubject,
+      email_from: emailFrom,
+      email_to: emailTo,
+      email_cc: emailCc,
       subtasks: subtasks,
       parent_task_id: parentTaskId
     };
@@ -250,6 +262,26 @@ function addWorkingDays(startDate, days) {
   }
   return result;
 }
+
+function mergeEmailHeaders(headerList) {
+  var seen = {};
+  var results = [];
+  for (var i = 0; i < headerList.length; i++) {
+    var raw = headerList[i];
+    if (!raw) continue;
+    var parts = String(raw).split(/[,;]+/);
+    for (var j = 0; j < parts.length; j++) {
+      var item = parts[j].trim();
+      if (!item) continue;
+      var match = item.match(/<([^>]+)>/);
+      var key = (match ? match[1] : item).trim().toLowerCase();
+      if (!key || seen[key]) continue;
+      seen[key] = true;
+      results.push(item);
+    }
+  }
+  return results.join(", ");
+}
 ```
 
 ## 3. Set Trigger Otomatis
@@ -267,11 +299,15 @@ Dengan ini:
 1. Jika Budi email, lalu Tono membalas, task tidak akan terbentuk karena belum dibaca GAS (tidak ada `#task#`).
 2. Jika Reva me-_reply_ dengan kode `#task#Buatkan...`:
    - GAS terpicu di menit bersangkutan.
-   - Task terbentuk dan GAS menandai Thread sebagai *Read* (Agar menit selanjutnya diabaikan).
-   - Di Server Aplikasi (`server.ts`):
+   - Task terbentuk lengkap dengan metadata email (`email_thread_id`, `email_subject`, `email_from`, `email_to`, `email_cc`) dan GAS menandai Thread dengan label `IC-Task-Created` agar menit selanjutnya diabaikan.
+   - Di Server Aplikasi:
      - Di-cek apakah `email_thread_id` sudah ada. Jika ada, di-*drop* atau di-_skip_ agar **tidak pernah Duplicate**.
-     - Di-cek _request_ dari Budi apakah _Division_-nya terekam sebelumnya d database. Jika ya, akan diterapkan.
+     - Di-cek _request_ dari Budi apakah _Division_-nya terekam sebelumnya di database. Jika ya, akan diterapkan.
      - Dibuatkan `display_id` nomor increment otomatis selanjutnya (Contoh `IC-00389`).
+3. **Reply All Saat Task Di-assign atau Manual dari Detail Task**:
+   - Ketika **Assignee** diisi/diubah (dari modal edit task maupun dropdown list) pada task yang berasal dari email, aplikasi otomatis memunculkan **Pop-up Konfirmasi Reply All** berisi detail **Sub Email**, **To** (`From` + `To` asli), **CC**, dan draf pesan *"task sedang diproses oleh Assignee"*.
+   - Di dalam form detail task juga tersedia panel **Detail Email Asal** dan tombol **Reply All** manual.
+   - Pastikan **Google Apps Script Web App (`google-apps-script/code.gs`)** sudah di-deploy ulang dengan versi terbaru yang memiliki handler `replyAllEmail` (mendukung balasan thread `GmailApp.getThreadById` dan fallback otomatis ke `MailApp.sendEmail`).
 
 ### Opsi B: Menggunakan Sistem User Baru (Akun Layanan)
 Langkah ini cukup rapi tetapi membutuhkan akun (dan berpotensi biaya lisensi Workspace) tambahan:

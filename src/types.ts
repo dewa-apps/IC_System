@@ -86,6 +86,13 @@ export interface Task {
   attachment_count?: number;
   recurring_pattern?: 'none' | 'daily' | 'weekly' | 'monthly';
   updated_at?: string;
+  email_thread_id?: string;
+  email_message_id?: string;
+  email_subject?: string;
+  email_from?: string;
+  email_to?: string;
+  email_cc?: string;
+  email_reply_all_sent_at?: string;
 }
 
 export interface DataListJadwal {

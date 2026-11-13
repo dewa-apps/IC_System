@@ -29,7 +29,7 @@ export default defineConfig(({mode}) => {
         injectRegister: 'auto',
         includeAssets: ['pwa-icon.svg'],
         workbox: {
-          maximumFileSizeToCacheInBytes: 3000000 // 3MB to allow for the larger index-XXX.js
+          maximumFileSizeToCacheInBytes: 8 * 1024 * 1024 // 8MB to support unminified dev/check builds
         },
         manifest: {
           name: 'IC Task Manager',

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Task } from '../types';
 import { apiFetch } from '../apiInterceptor';
 import { db } from '../firebase';
-import { buildProgressEmailContent, buildReplyAllDraft } from '../utils/emailReply';
+import { buildProgressEmailContent, buildReplyAllDraft, extractEmailAddresses, filterSircloCcEmails } from '../utils/emailReply';
 
 interface ReplyAllEmailModalProps {
   isOpen: boolean;
@@ -30,6 +30,7 @@ export default function ReplyAllEmailModal({
   const [subject, setSubject] = useState('');
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
+  const [excludedExternalCc, setExcludedExternalCc] = useState<string[]>([]);
   const [recipientName, setRecipientName] = useState('');
   const [picName, setPicName] = useState('');
   const [customNote, setCustomNote] = useState('');
@@ -46,6 +47,7 @@ export default function ReplyAllEmailModal({
       setSubject(draft.subject);
       setTo(draft.to);
       setCc(draft.cc);
+      setExcludedExternalCc(draft.excludedExternalCc);
       setRecipientName(draft.recipientName);
       setPicName(draft.picName);
       setCustomNote('');
@@ -90,8 +92,15 @@ export default function ReplyAllEmailModal({
       setErrorMessage('Isi pesan balasan tidak boleh kosong.');
       return;
     }
-    if ((!hasThreadId || forceFallback) && !to.trim() && !cc.trim()) {
-      setErrorMessage('Minimal satu alamat penerima pada To atau CC harus diisi.');
+    const toEmails = extractEmailAddresses(to);
+    const sanitizedCcList = filterSircloCcEmails(cc, toEmails);
+    const sanitizedCc = sanitizedCcList.join(', ');
+    if (sanitizedCc !== cc.trim()) {
+      setCc(sanitizedCc);
+    }
+
+    if ((!hasThreadId || forceFallback) && !to.trim() && !sanitizedCc) {
+      setErrorMessage('Minimal satu alamat penerima pada To atau CC (@sirclo.com) harus diisi.');
       return;
     }
 
@@ -104,7 +113,7 @@ export default function ReplyAllEmailModal({
           action: 'replyAllEmail',
           threadId: task.email_thread_id || '',
           to: to.trim(),
-          cc: cc.trim(),
+          cc: sanitizedCc,
           subject: subject.trim(),
           body: effectivePlainBody,
           htmlBody: generatedContent.htmlBody,
@@ -120,8 +129,8 @@ export default function ReplyAllEmailModal({
 
       const modeText =
         result.mode === 'gmail_thread_reply_all'
-          ? 'Thread Gmail Reply All'
-          : 'Fallback Daftar Penerima (To & CC)';
+          ? 'Thread Gmail Reply (@sirclo.com CC)'
+          : 'Fallback Daftar Penerima (To & @sirclo.com CC)';
 
       const sentAtIso = new Date().toISOString();
 
@@ -130,7 +139,7 @@ export default function ReplyAllEmailModal({
           task_id: String(task.id),
           user: currentUserName || 'System',
           action: 'Sent Email Reply All',
-          details: `Subject: ${subject.trim()}\nTo: ${to.trim() || '-'}\nCC: ${cc.trim() || '-'}\nMode: ${modeText}`,
+          details: `Subject: ${subject.trim()}\nTo: ${to.trim() || '-'}\nCC: ${sanitizedCc || '-'}\nMode: ${modeText}`,
           created_at: serverTimestamp()
         });
       } catch (logErr) {
@@ -269,16 +278,21 @@ export default function ReplyAllEmailModal({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  CC (To Asli &amp; CC Asli)
+                  CC (To Asli &amp; CC Asli · Khusus @sirclo.com)
                 </label>
                 <input
                   type="text"
                   value={cc}
                   onChange={(e) => setCc(e.target.value)}
                   disabled={isSending}
-                  placeholder="to-asli@domain.com, cc@domain.com"
+                  placeholder="tim@sirclo.com, pic@sirclo.com"
                   className="w-full px-3 py-2 text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] rounded focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]"
                 />
+                <p className="mt-1 text-[11px] text-[var(--text-muted)] leading-snug">
+                  {excludedExternalCc.length > 0
+                    ? `Email di luar @sirclo.com otomatis di-takeout dari CC: ${excludedExternalCc.join(', ')}`
+                    : 'Hanya email dengan domain @sirclo.com yang disertakan di CC.'}
+                </p>
               </div>
             </div>
 

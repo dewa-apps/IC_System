@@ -3,6 +3,23 @@ import { Task } from '../types';
 export const DASHBOARD_LINK_URL =
   'https://sites.google.com/sirclo.com/ic-queue-dashboard/home?pli=1&authuser=0';
 
+export const ALLOWED_CC_DOMAIN = '@sirclo.com';
+
+export function isSircloEmail(email: string): boolean {
+  const normalized = (email || '').trim().toLowerCase();
+  return normalized.endsWith(ALLOWED_CC_DOMAIN) && normalized.length > ALLOWED_CC_DOMAIN.length;
+}
+
+export function filterSircloCcEmails(
+  raw?: string | string[] | null,
+  excludeEmails: string[] = []
+): string[] {
+  const excludeSet = new Set(excludeEmails.map(e => e.trim().toLowerCase()).filter(Boolean));
+  return extractEmailAddresses(raw)
+    .map(e => e.toLowerCase())
+    .filter(email => isSircloEmail(email) && !excludeSet.has(email));
+}
+
 export function hasTaskEmailMetadata(task?: Partial<Task> | null): boolean {
   if (!task) return false;
   return Boolean(
@@ -280,6 +297,7 @@ export function buildReplyAllDraft(
   subject: string;
   to: string;
   cc: string;
+  excludedExternalCc: string[];
   recipientName: string;
   picName: string;
   body: string;
@@ -291,11 +309,15 @@ export function buildReplyAllDraft(
   const originalCcEmails = extractEmailAddresses(task.email_cc);
 
   // "To" diisi oleh pengirim asli (From), sedangkan "To asli" dimasukkan ke CC bersama CC asli
+  // Khusus CC: hanya email dengan domain @sirclo.com yang disertakan (di luar @sirclo.com di-takeout)
   const primaryTo = Array.from(new Set(fromEmails.map(e => e.toLowerCase())));
   const toSet = new Set(primaryTo);
-  const combinedCc = Array.from(
+  const allCcCandidates = Array.from(
     new Set([...originalToEmails, ...originalCcEmails].map(e => e.toLowerCase()))
   ).filter(e => !toSet.has(e));
+
+  const combinedCc = allCcCandidates.filter(isSircloEmail);
+  const excludedExternalCc = allCcCandidates.filter(email => !isSircloEmail(email));
 
   const recipientName = extractRecipientDisplayName(task);
   const picName = (assigneeOverride !== undefined ? assigneeOverride : task.assignee || '').trim();
@@ -309,6 +331,7 @@ export function buildReplyAllDraft(
     subject,
     to: primaryTo.join(', '),
     cc: combinedCc.join(', '),
+    excludedExternalCc,
     recipientName,
     picName,
     body: plainBody,

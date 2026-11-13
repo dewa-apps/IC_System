@@ -42,34 +42,94 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Jika request adalah untuk Reply All ke thread email task (dengan fallback daftar penerima)
+    // Jika request adalah untuk Reply All ke thread email task (dengan CC khusus @sirclo.com & fallback daftar penerima)
     if (data.action === 'replyAllEmail') {
       var threadId = (data.threadId || "").toString().trim();
       var forceFallback = Boolean(data.forceFallback);
       var toRecipients = (data.to || "").toString().trim();
-      var ccRecipients = (data.cc || "").toString().trim();
+      var rawCcRecipients = (data.cc || "").toString().trim();
       var emailSubject = (data.subject || "Task Update").toString().trim();
       var emailBody = (data.body || "").toString();
       var emailHtmlBody = data.htmlBody ? data.htmlBody.toString() : "";
       var gmailFallbackReason = "";
 
-      if (threadId && !forceFallback) {
+      function extractSingleEmailAddr(rawVal) {
+        if (!rawVal) return "";
+        var s = rawVal.toString().trim();
+        var m = s.match(/<([^>]+)>/);
+        return (m && m[1] ? m[1] : s).trim().toLowerCase();
+      }
+
+      function filterSircloOnlyCc(rawCc, rawTo) {
+        if (!rawCc) return "";
+        var toMap = {};
+        var toParts = (rawTo || "").toString().split(/[,;]+/);
+        for (var t = 0; t < toParts.length; t++) {
+          var toAddr = extractSingleEmailAddr(toParts[t]);
+          if (toAddr) toMap[toAddr] = true;
+        }
+        var ccParts = rawCc.toString().split(/[,;]+/);
+        var seenCc = {};
+        var allowedCc = [];
+        var suffix = "@sirclo.com";
+        for (var c = 0; c < ccParts.length; c++) {
+          var addr = extractSingleEmailAddr(ccParts[c]);
+          if (!addr || addr.indexOf("@") === -1) continue;
+          if (addr.length <= suffix.length || addr.slice(-suffix.length) !== suffix) continue;
+          if (toMap[addr] || seenCc[addr]) continue;
+          seenCc[addr] = true;
+          allowedCc.push(addr);
+        }
+        return allowedCc.join(", ");
+      }
+
+      var ccRecipients = filterSircloOnlyCc(rawCcRecipients, toRecipients);
+      var parsedToList = [];
+      var rawToParts = toRecipients.split(/[,;]+/);
+      for (var p = 0; p < rawToParts.length; p++) {
+        var toCandidate = extractSingleEmailAddr(rawToParts[p]);
+        if (toCandidate && toCandidate.indexOf("@") !== -1) {
+          parsedToList.push(toCandidate);
+        }
+      }
+
+      if (threadId && !forceFallback && parsedToList.length <= 1) {
         try {
           var thread = GmailApp.getThreadById(threadId);
           if (thread) {
-            var replyOptions = {};
-            if (emailHtmlBody) {
-              replyOptions.htmlBody = emailHtmlBody;
+            var messages = thread.getMessages();
+            var targetMsg = null;
+            var expectedTo = parsedToList.length === 1 ? parsedToList[0] : "";
+
+            for (var m = messages.length - 1; m >= 0; m--) {
+              var candidateMsg = messages[m];
+              var replyTarget = extractSingleEmailAddr(candidateMsg.getReplyTo()) || extractSingleEmailAddr(candidateMsg.getFrom());
+              if (!expectedTo || replyTarget === expectedTo) {
+                targetMsg = candidateMsg;
+                break;
+              }
             }
-            if (ccRecipients) {
-              replyOptions.cc = ccRecipients;
+
+            if (targetMsg) {
+              var replyOptions = {};
+              if (emailHtmlBody) {
+                replyOptions.htmlBody = emailHtmlBody;
+              }
+              if (ccRecipients) {
+                replyOptions.cc = ccRecipients;
+              }
+              // Gunakan message.reply() (bukan thread.replyAll()) agar penerima CC eksternal
+              // di luar @sirclo.com pada thread asli tidak otomatis ikut terkirim.
+              targetMsg.reply(emailBody, replyOptions);
+              return ContentService.createTextOutput(JSON.stringify({
+                status: 'success',
+                mode: 'gmail_thread_reply_all',
+                ccUsed: ccRecipients,
+                message: 'Reply berhasil dikirim ke thread Gmail (CC khusus @sirclo.com).'
+              })).setMimeType(ContentService.MimeType.JSON);
+            } else {
+              gmailFallbackReason = 'Pengirim pada To tidak cocok dengan pesan di thread Gmail; beralih ke daftar penerima eksplisit.';
             }
-            thread.replyAll(emailBody, replyOptions);
-            return ContentService.createTextOutput(JSON.stringify({
-              status: 'success',
-              mode: 'gmail_thread_reply_all',
-              message: 'Reply All berhasil dikirim ke thread Gmail asli.'
-            })).setMimeType(ContentService.MimeType.JSON);
           } else {
             gmailFallbackReason = 'Thread tidak ditemukan di akun Gmail GAS ini.';
           }
@@ -78,7 +138,7 @@ function doPost(e) {
         }
       }
 
-      // Fallback: kirim melalui MailApp ke daftar penerima (From + To dan CC)
+      // Fallback: kirim melalui MailApp ke daftar penerima (To + CC khusus @sirclo.com)
       var finalTo = toRecipients;
       var finalCc = ccRecipients;
       if (!finalTo && finalCc) {
@@ -109,7 +169,8 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
         mode: 'mailapp_fallback',
-        message: 'Reply All dikirim menggunakan daftar penerima email (To & CC).',
+        ccUsed: finalCc,
+        message: 'Reply All dikirim menggunakan daftar penerima email (To & CC khusus @sirclo.com).',
         fallbackReason: gmailFallbackReason || (forceFallback ? 'Manual recipient list mode' : 'No threadId')
       })).setMimeType(ContentService.MimeType.JSON);
     }

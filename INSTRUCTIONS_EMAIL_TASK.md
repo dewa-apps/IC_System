@@ -305,9 +305,9 @@ Dengan ini:
      - Di-cek _request_ dari Budi apakah _Division_-nya terekam sebelumnya di database. Jika ya, akan diterapkan.
      - Dibuatkan `display_id` nomor increment otomatis selanjutnya (Contoh `IC-00389`).
 3. **Reply All Saat Task Di-assign atau Manual dari Detail Task**:
-   - Ketika **Assignee** diisi/diubah (dari modal edit task maupun dropdown list) pada task yang berasal dari email, aplikasi otomatis memunculkan **Pop-up Konfirmasi Reply All** berisi detail **Sub Email**, **To** (`From` asli), **CC** (`To` asli + `CC` asli), dan template HTML **Update Progress Request** (lengkap dengan tabel detail tiket & tombol **Lihat Dashboard**).
-   - Di dalam form detail task juga tersedia panel **Detail Email Asal** dan tombol **Reply All** manual.
-   - Pastikan **Google Apps Script Web App (`google-apps-script/code.gs`)** sudah di-deploy ulang dengan versi terbaru yang memiliki handler `replyAllEmail` (mendukung balasan thread `GmailApp.getThreadById` dan fallback otomatis ke `MailApp.sendEmail`).
+   - Ketika **Assignee** diisi/diubah (dari modal edit task maupun dropdown list) pada task yang berasal dari email, aplikasi otomatis memunculkan **Pop-up Konfirmasi Reply All** berisi detail **Sub Email**, **To** (`From` asli), **CC** (`To` asli + `CC` asli khusus domain `@sirclo.com` — email di luar `@sirclo.com` otomatis di-takeout), dan template HTML **Update Progress Request** (lengkap dengan tabel detail tiket & tombol **Lihat Dashboard**).
+   - Di dalam form detail task (di bawah input **Assignee**), kolom **Email** pada tabel task (sebelum kolom **Assignee**), dan kartu pada tampilan **Board** tersedia tombol **Reply All** manual.
+   - Pastikan **Google Apps Script Web App (`google-apps-script/code.gs`)** sudah di-deploy ulang dengan versi terbaru yang memiliki handler `replyAllEmail` (menggunakan `message.reply()` + filter CC khusus `@sirclo.com` dan fallback otomatis ke `MailApp.sendEmail`).
 
 ### Opsi B: Menggunakan Sistem User Baru (Akun Layanan)
 Langkah ini cukup rapi tetapi membutuhkan akun (dan berpotensi biaya lisensi Workspace) tambahan:

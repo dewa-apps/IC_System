@@ -181,10 +181,83 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    const normalizeEmailList = (raw: unknown): string => {
+      if (!raw) return "";
+      const items = Array.isArray(raw)
+        ? raw.map(v => String(v || ""))
+        : String(raw).split(/[,;]+/);
+      const seen = new Set<string>();
+      const cleaned: string[] = [];
+      for (const item of items) {
+        const trimmed = item.trim();
+        if (!trimmed) continue;
+        const match = trimmed.match(/<([^>]+)>/);
+        const addr = (match ? match[1] : trimmed).trim().toLowerCase();
+        if (!addr || seen.has(addr)) continue;
+        seen.add(addr);
+        cleaned.push(trimmed);
+      }
+      return cleaned.join(", ");
+    };
+
+    const sanitizeEmailTaskDescription = (rawDesc: unknown): string => {
+      if (!rawDesc) return "";
+      const str = String(rawDesc).replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+      if (!str) return "";
+
+      if (/<(?:p|strong|em|br|ul|ol|li)\b/i.test(str)) {
+        return str;
+      }
+
+      const lines = str.split("\n");
+      const keptLines: string[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].replace(/\u00a0|\u202f/g, " ").trim();
+        if (!line) {
+          if (keptLines.length > 0) keptLines.push("");
+          continue;
+        }
+        if (/^[*_]*#(?:task|category|priority|subtask|parent_task)#/i.test(line)) break;
+        if (/^>/.test(line) || /^--\s*$/.test(lines[i])) break;
+        if (/^-{4,}\s*(?:Original Message|Forwarded message)\s*-{4,}/i.test(line)) break;
+        if (/^(?:On|Pada)\s+.{3,160}(?:wrote|menulis)\s*:\s*$/i.test(line)) break;
+        if (/^On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}/i.test(line)) break;
+        if (/^On\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+(?:at\s+)?\d{1,2}[:.]\d{2}/i.test(line)) break;
+        if (/^Pada\s+(?:Sen|Sel|Rab|Kam|Jum|Sab|Min)[a-z]*,\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+pukul\s+\d{1,2}[:.]\d{2}/i.test(line)) break;
+
+        const nextLine = (lines[i + 1] || "").replace(/\u00a0|\u202f/g, " ").trim();
+        if (nextLine && /^(?:On|Pada)\s+/i.test(line) && /(?:wrote|menulis)\s*:\s*$/i.test(nextLine)) break;
+
+        const withoutInlineTag = line.replace(/\s*#(?:category|priority|subtask|parent_task)#.*$/i, "").trim();
+        if (withoutInlineTag) keptLines.push(withoutInlineTag);
+        if (withoutInlineTag !== line) break;
+      }
+
+      const joined = keptLines.join("\n").trim();
+      if (!joined) return "";
+
+      const escaped = joined
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      return escaped.replace(
+        /(^|[\s([{"'“‘])\*(\S(?:[^*\n]*?\S)?)\*(?=$|[\s.,;:!?)\]}"'”’])/g,
+        "$1<strong>$2</strong>"
+      );
+    };
+
+    const normalizedThreadId = String(taskData.email_thread_id || taskData.thread_id || taskData.threadId || "").trim();
+    const normalizedMessageId = String(taskData.email_message_id || taskData.message_id || taskData.messageId || "").trim();
+    const normalizedEmailSubject = String(taskData.email_subject || taskData.subject || (normalizedThreadId ? taskData.title : "") || "").trim();
+    const normalizedEmailFrom = normalizeEmailList(taskData.email_from || taskData.from || (normalizedThreadId ? taskData.requestor : ""));
+    const normalizedEmailTo = normalizeEmailList(taskData.email_to || taskData.to);
+    const normalizedEmailCc = normalizeEmailList(taskData.email_cc || taskData.cc);
+
     // Duplicate check based on email thread id
-    if (taskData.email_thread_id) {
+    if (normalizedThreadId) {
       const existingInfo = await db.collection("tasks")
-        .where("email_thread_id", "==", taskData.email_thread_id)
+        .where("email_thread_id", "==", normalizedThreadId)
         .limit(1)
         .get();
       if (!existingInfo.empty) {
@@ -205,15 +278,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return `IC-${String(nextNum).padStart(5, '0')}`;
     });
 
-    // Create a task
-    const result = await db.collection("tasks").add({
+    const hasEmailOrigin = Boolean(
+      normalizedThreadId ||
+      normalizedMessageId ||
+      normalizedEmailSubject ||
+      normalizedEmailFrom ||
+      normalizedEmailTo ||
+      normalizedEmailCc
+    );
+
+    const newTaskPayload: Record<string, any> = {
       ...taskData,
+      description: sanitizeEmailTaskDescription(taskData.description),
       authorName: authorName,
       division: division,
       display_id: newDisplayId,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (hasEmailOrigin) {
+      newTaskPayload.email_thread_id = normalizedThreadId;
+      newTaskPayload.email_message_id = normalizedMessageId;
+      newTaskPayload.email_subject = normalizedEmailSubject;
+      newTaskPayload.email_from = normalizedEmailFrom;
+      newTaskPayload.email_to = normalizedEmailTo;
+      newTaskPayload.email_cc = normalizedEmailCc;
+    }
+
+    // Create a task
+    const result = await db.collection("tasks").add(newTaskPayload);
 
     // Log activity
     try {

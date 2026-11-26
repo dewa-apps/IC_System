@@ -105,24 +105,20 @@ function processEmailTasks() {
     var requestDate = requestMessage.getDate();
     var dueDate = addWorkingDays(requestDate, 3);
     
-    // Ambil string di sebelah #task#
-    var bodyText = taskMessage.getPlainBody();
-    var description = "";
-    var match = bodyText.match(/#task#\s*(.*?)(?:\r?\n|$)/i);
-    if (match && match[1]) {
-      description = match[1].trim(); 
-    }
+    // Ambil description dari #task# (mendukung wrap baris Gmail, bold *...*, serta berhenti di #tag# atau header balasan "On ... wrote:")
+    var bodyText = taskMessage.getPlainBody() || "";
+    var description = extractTaskDescription(bodyText);
     
     // Ambil parent_task_id jika ini harus masuk sebagai subtask ke task lain
     var parentTaskId = null;
-    var parentMatch = bodyText.match(/#parent_task#\s*(.*?)(?:\r?\n|$)/i);
+    var parentMatch = bodyText.match(/^[ \t]*[*_]*#parent_task#[ \t]*([^\r\n]*)/im);
     if (parentMatch && parentMatch[1]) {
-      var rawId = parentMatch[1].trim();
+      var rawId = cleanTagValue(parentMatch[1]);
       // Mengambil pola IC-XXXXX untuk menghindari teks tidak perlu ikut masuk
       var exactMatch = rawId.match(/IC-\d+/i);
       if (exactMatch) {
         parentTaskId = exactMatch[0].toUpperCase();
-      } else {
+      } else if (rawId) {
         parentTaskId = rawId.toUpperCase();
       }
       Logger.log("Ditemukan Parent Task ID: " + parentTaskId);
@@ -130,29 +126,32 @@ function processEmailTasks() {
     
     // Ambil category dari #category#
     var category = "General";
-    var categoryMatch = bodyText.match(/#category#\s*(.*?)(?:\r?\n|$)/i);
+    var categoryMatch = bodyText.match(/^[ \t]*[*_]*#category#[ \t]*([^\r\n]*)/im);
     if (categoryMatch && categoryMatch[1]) {
-      category = categoryMatch[1].trim();
+      var parsedCategory = cleanTagValue(categoryMatch[1]);
+      if (parsedCategory) {
+        category = parsedCategory;
+      }
     }
 
     // Ambil priority dari #priority#
     var priority = "LOW";
-    var priorityMatch = bodyText.match(/#priority#\s*(.*?)(?:\r?\n|$)/i);
+    var priorityMatch = bodyText.match(/^[ \t]*[*_]*#priority#[ \t]*([^\r\n]*)/im);
     if (priorityMatch && priorityMatch[1]) {
-      priority = priorityMatch[1].trim().toUpperCase();
+      var parsedPriority = cleanTagValue(priorityMatch[1]).toUpperCase();
       var validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-      if (validPriorities.indexOf(priority) === -1) {
-        priority = "LOW";
+      if (validPriorities.indexOf(parsedPriority) !== -1) {
+        priority = parsedPriority;
       }
     }
     
     // Ambil subtasks dari baris yang mengandung #subtask#
     var subtasks = [];
-    var subtaskRegex = /#subtask#\s*(.*?)(?:\r?\n|$)/gi;
+    var subtaskRegex = /^[ \t]*[*_]*#subtask#[ \t]*([^\r\n]*)/gim;
     var subtaskMatch;
     while ((subtaskMatch = subtaskRegex.exec(bodyText)) !== null) {
       if (subtaskMatch[1]) {
-        var subTitle = subtaskMatch[1].trim();
+        var subTitle = cleanTagValue(subtaskMatch[1]);
         if (subTitle) {
           subtasks.push({
             id: Utilities.getUuid(),
@@ -261,6 +260,115 @@ function addWorkingDays(startDate, days) {
     }
   }
   return result;
+}
+
+function cleanTagValue(raw) {
+  return String(raw || "")
+    .replace(/\s+#(?:task|category|priority|subtask|parent_task)#.*$/i, "")
+    .replace(/[*_]+$/g, "")
+    .trim();
+}
+
+function isDirectiveTagLine(line) {
+  return /^[ \t]*[*_]*#(?:task|category|priority|subtask|parent_task)#/i.test(line || "");
+}
+
+function isReplyQuoteBoundary(lines, index) {
+  var line = (lines[index] || "").replace(/\u00a0|\u202f/g, " ").trim();
+  if (!line) return false;
+  if (/^>/.test(line)) return true;
+  if (/^--\s*$/.test(lines[index] || "")) return true;
+  if (/^-{4,}\s*(?:Original Message|Forwarded message)\s*-{4,}/i.test(line)) return true;
+  if (/^_{5,}$/.test(line)) return true;
+  if (/^(?:From|Dari)\s*:\s*.+@/i.test(line)) return true;
+  if (/^(?:On|Pada)\s+.{3,160}(?:wrote|menulis)\s*:\s*$/i.test(line)) return true;
+  if (/^On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}/i.test(line)) return true;
+  if (/^On\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+(?:at\s+)?\d{1,2}[:.]\d{2}/i.test(line)) return true;
+  if (/^Pada\s+(?:Sen|Sel|Rab|Kam|Jum|Sab|Min)[a-z]*,\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+pukul\s+\d{1,2}[:.]\d{2}/i.test(line)) return true;
+
+  var nextLine = (lines[index + 1] || "").replace(/\u00a0|\u202f/g, " ").trim();
+  if (nextLine && /^(?:On|Pada)\s+/i.test(line) && /(?:wrote|menulis)\s*:\s*$/i.test(nextLine)) {
+    return true;
+  }
+  return false;
+}
+
+function escapeEmailHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function formatPlainParagraphToHtml(paragraphText) {
+  var escaped = escapeEmailHtml(paragraphText);
+  // Ubah format bold Gmail (*teks*) menjadi <strong>teks</strong>
+  return escaped.replace(/(^|[\s([{"'“‘])\*(\S(?:[^*\n]*?\S)?)\*(?=$|[\s.,;:!?)\]}"'”’])/g, "$1<strong>$2</strong>");
+}
+
+function extractTaskDescription(bodyText) {
+  var normalized = String(bodyText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  var lines = normalized.split("\n");
+  var startIdx = -1;
+  var inlineText = "";
+
+  for (var i = 0; i < lines.length; i++) {
+    var lineMatch = lines[i].match(/#task#[ \t]*(.*)$/i);
+    if (lineMatch) {
+      startIdx = i;
+      inlineText = (lineMatch[1] || "")
+        .replace(/\s*#(?:category|priority|subtask|parent_task)#.*$/i, "")
+        .trim();
+      break;
+    }
+  }
+
+  if (startIdx === -1) return "";
+
+  var paragraphs = [];
+  var currentLines = [];
+  if (inlineText) {
+    currentLines.push(inlineText);
+  }
+
+  for (var j = startIdx + 1; j < lines.length; j++) {
+    var rawLine = lines[j];
+    var trimmedLine = rawLine.trim();
+
+    if (isDirectiveTagLine(rawLine) || isReplyQuoteBoundary(lines, j)) {
+      break;
+    }
+
+    if (!trimmedLine) {
+      if (currentLines.length > 0) {
+        paragraphs.push(currentLines.join(" "));
+        currentLines = [];
+      }
+      continue;
+    }
+
+    var cleanLine = trimmedLine.replace(/\s*#(?:category|priority|subtask|parent_task)#.*$/i, "").trim();
+    if (cleanLine) {
+      currentLines.push(cleanLine);
+    }
+    if (cleanLine !== trimmedLine) {
+      break;
+    }
+  }
+
+  if (currentLines.length > 0) {
+    paragraphs.push(currentLines.join(" "));
+  }
+
+  if (paragraphs.length === 0) return "";
+
+  if (paragraphs.length === 1) {
+    return formatPlainParagraphToHtml(paragraphs[0]);
+  }
+
+  return paragraphs.map(function(p) {
+    return "<p>" + formatPlainParagraphToHtml(p) + "</p>";
+  }).join("");
 }
 
 function mergeEmailHeaders(headerList) {

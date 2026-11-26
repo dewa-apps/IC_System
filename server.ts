@@ -186,8 +186,59 @@ async function startServer() {
         normalizedEmailCc
       );
 
+      const sanitizeEmailTaskDescription = (rawDesc: unknown): string => {
+        if (!rawDesc) return "";
+        const str = String(rawDesc).replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+        if (!str) return "";
+
+        // Jika sudah HTML terformat (mis. dari parser GAS terbaru), bersihkan baris tag/reply nyasar bila ada
+        if (/<(?:p|strong|em|br|ul|ol|li)\b/i.test(str)) {
+          return str;
+        }
+
+        const lines = str.split("\n");
+        const keptLines: string[] = [];
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].replace(/\u00a0|\u202f/g, " ").trim();
+          if (!line) {
+            if (keptLines.length > 0) keptLines.push("");
+            continue;
+          }
+          if (/^[*_]*#(?:task|category|priority|subtask|parent_task)#/i.test(line)) break;
+          if (/^>/.test(line) || /^--\s*$/.test(lines[i])) break;
+          if (/^-{4,}\s*(?:Original Message|Forwarded message)\s*-{4,}/i.test(line)) break;
+          if (/^(?:On|Pada)\s+.{3,160}(?:wrote|menulis)\s*:\s*$/i.test(line)) break;
+          if (/^On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}/i.test(line)) break;
+          if (/^On\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+(?:at\s+)?\d{1,2}[:.]\d{2}/i.test(line)) break;
+          if (/^Pada\s+(?:Sen|Sel|Rab|Kam|Jum|Sab|Min)[a-z]*,\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s+pukul\s+\d{1,2}[:.]\d{2}/i.test(line)) break;
+
+          const nextLine = (lines[i + 1] || "").replace(/\u00a0|\u202f/g, " ").trim();
+          if (nextLine && /^(?:On|Pada)\s+/i.test(line) && /(?:wrote|menulis)\s*:\s*$/i.test(nextLine)) break;
+
+          const withoutInlineTag = line.replace(/\s*#(?:category|priority|subtask|parent_task)#.*$/i, "").trim();
+          if (withoutInlineTag) keptLines.push(withoutInlineTag);
+          if (withoutInlineTag !== line) break;
+        }
+
+        const joined = keptLines.join("\n").trim();
+        if (!joined) return "";
+
+        const escaped = joined
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+
+        return escaped.replace(
+          /(^|[\s([{"'“‘])\*(\S(?:[^*\n]*?\S)?)\*(?=$|[\s.,;:!?)\]}"'”’])/g,
+          "$1<strong>$2</strong>"
+        );
+      };
+
+      const sanitizedDescription = sanitizeEmailTaskDescription(taskData.description);
+
       const newTaskPayload: Record<string, any> = {
         ...taskData,
+        description: sanitizedDescription,
         authorName: authorName,
         division: division,
         display_id: newDisplayId,
